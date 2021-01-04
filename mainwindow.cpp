@@ -10,8 +10,6 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-//    qDebug() << GuiBlocks::nextEvenGridValue(80,20);
-
     //Test Connections
     connect(ui->btnAddItem,SIGNAL(clicked()),this,SLOT(btnAddItem()));
     connect(ui->btnFilpH  ,SIGNAL(clicked()),this,SLOT(btnFlipH()));
@@ -30,7 +28,7 @@ void MainWindow::btnAddItem()
 
 void MainWindow::btnFlipH()
 {
-    ui->MainView->filpLastBlock();
+    ui->MainView->flipLastBlock();
 }
 
 void MainWindow::btnForceConnected()

@@ -29,13 +29,15 @@ public:
 
     static QSizeF connectorSizeGridSizePercent;
     static QColor blockRectBorderColor;
+    static QColor blockRectBorderColorOnHover;
+    static QColor shadowColor;
+    static QColor shadowColorOnHover;
     static QLinearGradient customFillGradient;
     static QColor blockRectFillColor1;
     static QColor blockRectFillColor2;
     static float  roundingXWidthPercent;
     static float  roundingYWidthPercent;
     static float  opacity;
-    static QColor shadowColor;
     static QColor inputConnectorBorderColor;
     static QColor outputConnectorBorderColor;
     static QColor inputConnectorFillColor;

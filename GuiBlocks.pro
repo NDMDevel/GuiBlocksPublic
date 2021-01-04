@@ -17,6 +17,8 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     GuiBlocks/Block.cpp \
+    GuiBlocks/Link.cpp \
+    GuiBlocks/MouseTracker.cpp \
     GuiBlocks/Painter.cpp \
     GuiBlocks/Scene.cpp \
     GuiBlocks/Style.cpp \
@@ -27,9 +29,12 @@ SOURCES += \
 
 HEADERS += \
     GuiBlocks/Block.h \
+    GuiBlocks/Link.h \
+    GuiBlocks/MouseTracker.h \
     GuiBlocks/Painter.h \
     GuiBlocks/Scene.h \
     GuiBlocks/Style.h \
+    GuiBlocks/TypeID.h \
     GuiBlocks/Utils.h \
     GuiBlocks/View.h \
     mainwindow.h
