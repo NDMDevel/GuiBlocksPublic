@@ -57,6 +57,20 @@ public:
     static QColor coarseGridColor;
 };
 
+class StyleLink
+{
+public:
+    StyleLink() = delete;
+
+    static QPen   normalPen;
+    static QColor normalColor;
+//    static QColor selectedColor;
+    static float  width;
+    static QColor shadowColor;
+    static Qt::PenStyle  normalLine;
+    static Qt::PenCapStyle normalCap;
+};
+
 
 } // namespace GuiBlocks
 

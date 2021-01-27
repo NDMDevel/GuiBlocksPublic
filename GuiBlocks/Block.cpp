@@ -12,8 +12,8 @@
 
 namespace GuiBlocks {
 
-Block*       Block::blockUnderMouse = nullptr;
-Block::Port* Block::portUnderMouse  = nullptr;
+//Block*       Block::blockUnderMouse = nullptr;
+//Block::Port* Block::portUnderMouse  = nullptr;
 
 
 Block::Block(const QString &type,
@@ -50,11 +50,11 @@ Block::~Block()
     //if this block is currently under the mouse,
     //clears the pointers to avoid access to a deleted
     //object
-    if( blockUnderMouse == this )
-    {
-        blockUnderMouse = nullptr;
-        portUnderMouse  = nullptr;
-    }
+//    if( blockUnderMouse == this )
+//    {
+//        blockUnderMouse = nullptr;
+//        portUnderMouse  = nullptr;
+//    }
 }
 
 void Block::addPort(Block::PortDir dir,QString type,QString name)

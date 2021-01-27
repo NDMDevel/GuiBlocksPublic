@@ -62,8 +62,8 @@ private:
     //is set with the block address. If the mouse is also over
     //a port, portUnderMouse y set with the address of the port.
     //Note: this are updated in hoverMoveEvent and hoverLeaveEvent.
-    static Block*       blockUnderMouse;
-    static Block::Port* portUnderMouse;
+//    static Block*       blockUnderMouse;
+//    static Block::Port* portUnderMouse;
 
 public:
     Block(const QString &_type,

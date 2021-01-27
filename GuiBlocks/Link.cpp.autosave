@@ -201,11 +201,6 @@ void Link::VectorTree::optimizeMem()
     }
 }
 
-void Link::VectorTree::optimizeSequence()
-{
-
-}
-
 const QPointF *Link::VectorTree::iterate()
 {
     if( repeatPrev )

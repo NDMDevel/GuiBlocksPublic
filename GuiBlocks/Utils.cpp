@@ -80,37 +80,27 @@ QPointF pointConvertion(const QPoint  &point)
     return pointf;
 }
 
-//QPoint operator+(const QPoint& p1, const QPoint& p2)
-//{
-//    QPoint point;
-//    point.setX(p1.x()+p2.x());
-//    point.setY(p1.y()+p2.y());
-//    return point;
-//}
-//
-//QPointF operator+(const QPointF& p1, const QPointF& p2)
-//{
-//    QPointF point;
-//    point.setX(p1.x()+p2.x());
-//    point.setY(p1.y()+p2.y());
-//    return point;
-//}
-//
-//QPoint operator-(const QPoint& p1, const QPoint& p2)
-//{
-//    QPoint point;
-//    point.setX(p1.x()-p2.x());
-//    point.setY(p1.y()-p2.y());
-//    return point;
-//}
-//
-//QPointF operator-(const QPointF& p1, const QPointF& p2)
-//{
-//    QPointF point;
-//    point.setX(p1.x()-p2.x());
-//    point.setY(p1.y()-p2.y());
-//    return point;
-//}
+template<typename T>
+std::tuple<T,T> minmax(const std::vector<T>& args)
+{
+    if( args.size() == 0 )
+        throw("minmax empty arg");
+
+    T min = args[0];
+    T max = args[0];
+    if( args.size() != 1 )
+        for( uint32_t idx=1 ; idx<args.size() ; idx++  )
+        {
+            min = std::min(min,args[idx]);
+            max = std::max(max,args[idx]);
+        }
+    return {min,max};
+}
+
+double squareDistance(const QPointF &p1, const QPointF &p2)
+{
+    return std::pow(p1.x()-p2.x(),2.0) + std::pow(p1.y()-p2.y(),2.0);
+}
 
 
 } // namespace GuiBlocks

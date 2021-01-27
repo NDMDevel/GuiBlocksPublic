@@ -16,10 +16,9 @@ float   nextEvenGridValue(float val,float gridSize);
 bool    isInteger(const double &val);
 QPoint  pointConvertion(const QPointF &pointf);
 QPointF pointConvertion(const QPoint  &point);
-//QPoint  operator+(const QPoint &p1,const QPoint &p2);
-//QPointF operator+(const QPointF &p1,const QPointF &p2);
-//QPoint  operator-(const QPoint &p1,const QPoint &p2);
-//QPointF operator-(const QPointF &p1,const QPointF &p2);
+double  squareDistance(const QPointF& p1,const QPointF& p2);
+template<typename T>
+std::tuple<T,T> minmax(const std::vector<T>& args);
 
 #define debug_msg(str) do{static int count=0;qDebug() << str << count++;}while(0)
 

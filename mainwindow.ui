@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>714</width>
-    <height>402</height>
+    <height>494</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -37,7 +37,7 @@
       <property name="title">
        <string>Test Inputs</string>
       </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="1,0,0,0">
        <item>
         <widget class="QPushButton" name="btnAddItem">
          <property name="text">
@@ -58,6 +58,9 @@
           <string>Force Connected</string>
          </property>
         </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="lineEdit"/>
        </item>
       </layout>
      </widget>

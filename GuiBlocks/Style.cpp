@@ -36,4 +36,11 @@ QColor StyleGrid::fineGridColor       = Qt::lightGray;
 float  StyleGrid::coarseGridWidth     = 1.0f;
 QColor StyleGrid::coarseGridColor     = Qt::gray;
 
+QColor StyleLink::normalColor        = Qt::blue;
+//QColor StyleLink::selectedColor    = Qt::magenta;
+float  StyleLink::width              = 4;
+QColor StyleLink::shadowColor   = "#202020";
+Qt::PenStyle    StyleLink::normalLine = Qt::SolidLine;
+Qt::PenCapStyle StyleLink::normalCap  = Qt::RoundCap;
+
 } // namespace GuiBlocks

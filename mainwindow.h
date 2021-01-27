@@ -25,6 +25,7 @@ private slots:
     void btnAddItem();
     void btnFlipH();
     void btnForceConnected();
+    void lineEditUpdated();
 
 private:
     //------------ User Section END

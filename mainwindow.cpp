@@ -14,6 +14,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnAddItem,SIGNAL(clicked()),this,SLOT(btnAddItem()));
     connect(ui->btnFilpH  ,SIGNAL(clicked()),this,SLOT(btnFlipH()));
     connect(ui->btnForceC ,SIGNAL(clicked()),this,SLOT(btnForceConnected()));
+    connect(ui->lineEdit  ,SIGNAL(returnPressed()),this,SLOT(lineEditUpdated()));
+
+    //Win Icon
+    setWindowIcon(QIcon("../GuiBlocks/GuiBlocks/Images/45-512.png"));
 }
 
 MainWindow::~MainWindow()
@@ -28,12 +32,18 @@ void MainWindow::btnAddItem()
 
 void MainWindow::btnFlipH()
 {
-    ui->MainView->flipLastBlock();
+//    ui->MainView->showLastTwoIndexes();
+    ui->MainView->printSeq();
 }
 
 void MainWindow::btnForceConnected()
 {
-    ui->MainView->forcedConnectedLastBlock();
+//    ui->MainView->forcedConnectedLastBlock();
+}
+
+void MainWindow::lineEditUpdated()
+{
+//    ui->MainView->setDebugText(ui->lineEdit->text());
 }
 
 
