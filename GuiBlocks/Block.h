@@ -9,6 +9,8 @@
 #include <QFontMetrics>
 #include <QGraphicsDropShadowEffect>
 #include "GuiBlocks/Style.h"
+#include "GuiBlocks/TypeID.h"
+//#include "GuiBlocks/Link.h"
 //#include "GuiBlocks/TypeID.h"
 
 namespace GuiBlocks {
@@ -29,6 +31,7 @@ public:
         QString name;
         bool    connected = false;
         bool    multipleConnections = false;
+        //std::shared_ptr<Link*> linkAttached;
         QPainterPath connectorShape;
         Port(){}
         Port(Block *parent,PortDir dir,QString type,QString name="");
@@ -69,9 +72,9 @@ public:
     Block(const QString &_type,
           const QString &name,
           QGraphicsItem *parent = nullptr);
-    virtual ~Block();
+    virtual ~Block() override;
 
-//    int type() const override{return TypeID::BlockID;}
+    int type() const override{return static_cast<int>(TypeID::BlockID);}
 
     const QString& getType() const { return _type; }
     const QString& getName() const { return name; }

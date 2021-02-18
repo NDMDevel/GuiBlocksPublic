@@ -7,7 +7,811 @@
 
 namespace GuiBlocks {
 
-#ifdef LINK_V2
+#ifdef LINK_V3
+//--------------------------------------
+//------ Link::LinkTree  -------------
+Link::LinkTree::LinkTree(const QPointF& startPos,uint16_t size)
+    : nodes(size)
+{
+    //the amount of ram reserved is for size nodes, but will only
+    //use one:
+    nodes[0].point = startPos;
+    for( auto &node : nodes )
+        node.connCount = 0;
+    nodes.resize(1);
+}
+
+uint16_t Link::LinkTree::appendPoint(uint16_t parentPointIdx, const QPointF& pos)
+{
+    //this method appends a point and returns the index where the point ends at:
+
+    //if parent exists the pos point will be appended
+    if( parentPointIdx >= nodes.size() )
+        return invalid_index;
+
+    //iterate over the nodes to find parentIdx
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    while( from < nodes.size() )
+    {
+        if( from == parentPointIdx )
+        {
+            nodes[from].connCount++;
+            nodes.insert( nodes.begin()+to , Node{pos,0} );
+            updateContainerRect();
+            return to;
+        }
+        to += nodes[from].connCount;
+        from++;
+    }
+    return invalid_index;
+}
+
+void Link::LinkTree::removePointAndSubTree(uint16_t idx)
+{
+    removeLastSubTree(idx);
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    iterateToMatch(from,to,idx,to);
+    nodes.erase(nodes.begin()+to);
+    nodes[from].connCount--;
+    updateContainerRect();
+}
+
+uint16_t Link::LinkTree::insertPointBefore(uint16_t idx, const QPointF &pos)
+{
+    recursiveInsert(idx);
+    nodes.insert(nodes.begin()+idx,Node{pos,1});
+    updateContainerRect();
+    return idx;    //returns the index where the insertion occurs
+}
+
+void Link::LinkTree::setPoint(uint16_t idx,const QPointF &point)
+{
+    nodes[idx].point = point;
+    updateContainerRect();
+}
+
+void Link::LinkTree::removeLastSubTree(uint16_t idx)
+{
+    if( idx >= nodes.size() )
+        return;
+
+    //if no sub trees in this node, exit
+    if( nodes[idx].connCount == 0 )
+        return;
+
+    uint16_t from = 0;
+    uint16_t to = 1;
+    iterateToMatch(from,to,idx,from);
+    iterateToMatch(from,to,to,from);
+    //now 'from' is at the begining of the tree that must be removed
+
+    uint16_t inner_from;
+    uint16_t inner_to;
+    do
+    {
+        inner_from = from;
+        inner_to = to;
+        while( nodes[inner_from].connCount != 0 )
+        {
+            if( nodes[inner_to].connCount == 0 )
+            {
+                nodes.erase(nodes.begin()+inner_to);
+                nodes[inner_from].connCount--;
+            }
+            else
+                iterateToMatch(inner_from,inner_to,inner_to,inner_from,false);
+        }
+    }
+    while( inner_from != from );
+    nodes.erase(nodes.begin()+from);
+    nodes[idx].connCount--;
+    updateContainerRect();
+}
+
+uint16_t Link::LinkTree::getParent(uint16_t idx)
+{
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    iterateToMatch(from,to,idx,to);
+    return from;
+}
+
+uint16_t Link::LinkTree::getChild(uint16_t idx)
+{
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    iterateToMatch(from,to,idx,from);
+    return to;
+}
+
+std::optional<uint16_t> Link::LinkTree::exists(const QPointF &point) const
+{
+    const auto &idx = findIdx(point);
+    if( idx.has_value() )
+        return idx.value();
+    return {};
+}
+
+std::optional<Link::LinkTree::IndexInfo> Link::LinkTree::isOnTrajectory(const QPointF &point)
+{
+    //if the data required is in cached, retuns the cached
+    if( cachePoint == point )
+        return cacheInfo;
+
+    cachePoint = point;
+    if( !containerRect.contains(point) )
+    {
+        if( nodes[0].point == point )
+        {
+            cacheInfo.overTrajectory = false;
+            cacheInfo.idx = 0;
+            return cacheInfo;
+        }
+        cacheInfo.overTrajectory = false;
+        cacheInfo.idx = LinkTree::invalid_index;
+        return{};
+    }
+
+    //iterate over points:
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    while( from != to )
+    {
+        uint16_t count = nodes[from].connCount;
+        while( count != 0 )
+        {
+            auto &p1 = nodes[from].point;
+            auto &p2 = nodes[to].point;
+
+            auto[minx,maxx] = std::minmax(p1.x(),p2.x());
+            auto[miny,maxy] = std::minmax(p1.y(),p2.y());
+
+            if( !(point.x() < minx || point.x() > maxx || point.y() < miny || point.y() > maxy) )
+            {
+                if( p1 == point )
+                {
+                    cacheInfo = IndexInfo{false,from};
+                    return cacheInfo;
+                }
+                if( p2 == point )
+                {
+                    cacheInfo = IndexInfo{false,to};
+                    return cacheInfo;
+                }
+
+                auto dx = p2.x()-p1.x();
+                if( dx == 0.0 && equals(point.x(),p1.x()) )
+                {
+                    if( point.y() > miny && point.y() < maxy )
+                    {
+                        cacheInfo = IndexInfo{true,to};
+                        return cacheInfo;
+                    }
+                }
+                else
+                {
+                    auto a = (p2.y()-p1.y())/dx;
+                    auto b = -a*p1.x()+p1.y();
+                    if( equals( point.y() , a*point.x()+b /*, qreal(StyleGrid::gridSize)/2.0*/) )
+                    {
+                        cacheInfo = IndexInfo{true,to};
+                        return cacheInfo;
+                    }
+                }
+            }
+            to++;
+            count--;
+        }
+        from++;
+    }
+
+    //not found, neither as point or as part of the trajectory that link to points
+    cacheInfo.overTrajectory = false;
+    cacheInfo.idx = LinkTree::invalid_index;
+    return {};
+}
+
+void Link::LinkTree::resetIterator()
+{
+    iterFrom = 0;
+    iterTo   = 1;
+    iterCount = nodes[0].connCount;
+}
+
+std::tuple<const QPointF *, const QPointF *> Link::LinkTree::iterateLine()
+{
+    while( iterCount == 0 )
+    {
+        iterFrom++;
+        iterCount = nodes[iterFrom].connCount;
+        if( iterFrom == iterTo )
+            return {};
+    }
+    iterCount--;
+    return { &(nodes[iterFrom].point) , &(nodes[iterTo++].point) };
+}
+
+std::tuple<const Link::LinkTree::Node*,
+           const Link::LinkTree::Node*>
+Link::LinkTree::iterateData()
+{
+    while( iterCount == 0 )
+    {
+        iterFrom++;
+        iterCount = nodes[iterFrom].connCount;
+        if( iterFrom == iterTo )
+            return {};
+    }
+    iterCount--;
+    return { &(nodes[iterFrom]) , &(nodes[iterTo++]) };
+}
+
+std::tuple<uint16_t, uint16_t> Link::LinkTree::getIteratorIndex() const
+{
+    return {iterFrom,iterTo-1};
+}
+
+std::optional<uint16_t> Link::LinkTree::findIdx(const QPointF &point) const
+{
+    for( uint16_t i=0 ; i<nodes.size() ; i++ )
+    {
+        auto &p = nodes[i].point;
+        if( p == point )
+            return i;
+    }
+    return {};
+}
+
+void Link::LinkTree::updateContainerRect()
+{
+    auto ptl = nodes[0].point;
+    auto pbr = nodes[0].point;
+    for( uint16_t idx=1 ; idx<nodes.size() ; idx++ )
+    {
+        auto x = nodes[idx].point.x();
+        auto y = nodes[idx].point.y();
+        if( ptl.x() > x )
+            ptl.setX(x);
+        if( ptl.y() < y )
+            ptl.setY(y);
+        if( pbr.x() < x )
+            pbr.setX(x);
+        if( pbr.y() > y )
+            pbr.setY(y);
+    }
+    ptl.setX(ptl.x()-double(StyleGrid::gridSize));
+    ptl.setY(ptl.y()+double(StyleGrid::gridSize));
+    pbr.setX(pbr.x()+double(StyleGrid::gridSize));
+    pbr.setY(pbr.y()-double(StyleGrid::gridSize));
+    containerRect = QRectF(ptl,pbr);
+}
+
+void Link::LinkTree::iterateToMatch(uint16_t &from,
+                                    uint16_t &to,
+                                    uint16_t target,
+                                    uint16_t &match,
+                                    bool resetPointers)
+{
+    if( resetPointers )
+    {
+        from = 0;
+        to = 1;
+    }
+    //if the pointers or the target is out of range, exit
+    if( to >= nodes.size() || from >= nodes.size() || target >= nodes.size() )
+        return;
+    //match should be a reference to either 'from' or 'to', otherwise exit
+    if( (&to != &match) && (&from != &match) )
+        return;
+    uint16_t count = nodes[from].connCount;
+    if( &match == &from )
+    {
+        while( match != target )
+        {
+            if( nodes[from].connCount == 0 || count == 0 )
+            {
+                from++;
+                count = nodes[from].connCount;
+            }
+            else
+            {
+                to++;
+                count--;
+            }
+        }
+    }
+    else
+    {
+        while( true )
+        {
+            if( nodes[from].connCount == 0 || count == 0 )
+            {
+                from++;
+                count = nodes[from].connCount;
+            }
+            else
+            {
+                if( match == target )
+                    return;
+                to++;
+                count--;
+            }
+        }
+    }
+}
+
+void Link::LinkTree::recursiveInsert(uint16_t idx,uint16_t childCount)
+{
+    //iterateToMatch initialize the pointers
+    uint16_t from;
+    uint16_t to;
+    iterateToMatch(from,to,idx,from);
+    while( childCount-- )
+    {
+        if( nodes[from].connCount != 0 )
+            recursiveInsert(to,nodes[from].connCount);
+        auto copy = nodes[from];
+        nodes.erase(nodes.begin()+from);
+        nodes.insert(nodes.begin()+to-1,copy);
+    }
+}
+
+void Link::LinkTree::show()
+{
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    uint16_t count = nodes[from].connCount;
+    while( from != to )
+    {
+        if( nodes[from].connCount == 0 || count == 0 )
+        {
+            from++;
+            count = nodes[from].connCount;
+        }
+        else
+        {
+            to++;
+            count--;
+        }
+    }
+}
+
+void Link::LinkTree::showRaw()
+{
+    for( uint16_t i=0 ; i<nodes.size() ; i++ )
+        qDebug() << i << nodes[i].connCount << nodes[i].point;
+}
+
+//--------------------------------------
+//------ Link
+Link::Link(const QPointF &startPos)
+    : points(startPos)
+{
+
+//    setFlags(QGraphicsItem::ItemIsMovable);
+    auto effect = new QGraphicsDropShadowEffect;
+    effect->setOffset(2, 2);
+    effect->setBlurRadius(15);
+    effect->setColor(StyleLink::shadowColor);
+    setGraphicsEffect(effect);
+}
+
+Link::Link(const Link &l)
+    : QGraphicsItem(nullptr),
+      points(l.points)
+{
+    activePort  = l.activePort;
+    pasivePorts = l.pasivePorts;
+    activePort  = l.activePort;
+}
+
+void Link::paint(QPainter *painter,
+                 const QStyleOptionGraphicsItem *option,
+                 QWidget *widget)
+{
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+    points.resetIterator();
+    //points.show();
+    painter->setPen(QPen(QBrush(StyleLink::normalColor),
+                         qreal(StyleLink::width),
+                         StyleLink::normalLine,
+                         StyleLink::normalCap));
+    painter->setFont(StyleText::blockHintFont);
+//    auto[p1,p2] = points.iterateLine();
+    auto[p1,p2] = points.iterateData();
+//    auto[idx1,idx2] = points.getIteratorIndex();
+    while( p1 != nullptr && p2 != nullptr )
+    {
+        //draw line:
+        painter->drawLine(p1->point,p2->point);
+        //draw node:
+        if( p2->connCount != 0 )
+            painter->drawEllipse(p2->point,2,2);
+        //[DEBUG] draw node index:
+//        painter->save();
+//        painter->setPen(QPen(QBrush(Qt::red),
+//                             qreal(StyleLink::width),
+//                             StyleLink::normalLine,
+//                             StyleLink::normalCap));
+//        painter->drawText(*p1,QString::number(idx1)+"("+QString::number(p1->x())+","+QString::number(p1->y())+")");
+//        painter->drawText(*p2,QString::number(idx2)+"("+QString::number(p2->x())+","+QString::number(p2->y())+")");
+//        painter->restore();
+        //prepare next iteration
+        std::tie(p1,p2) = points.iterateData();
+//        std::tie(idx1,idx2) = points.getIteratorIndex();
+    }
+    painter->setPen(QPen(QBrush(Qt::blue),
+                         1,
+                         Qt::DashLine,
+                         StyleLink::normalCap));
+    painter->drawRect(boundingRect());
+}
+
+bool Link::containsPoint(const QPointF &point)
+{
+#warning "the nextGridPosition wasent called before"
+    return points.isOnTrajectory(nextGridPosition(mapToScene(point),StyleGrid::gridSize)).has_value();
+}
+
+std::optional<QPointF> Link::computeMidPoint(const QPointF &startPoint,
+                                             const QPointF &endPoint,
+                                             const Link::LinkPath &linkPath)
+{
+    QPointF midp;
+    switch( linkPath )
+    {
+        case LinkPath::straight:
+            return {};
+        case LinkPath::verticalThenHorizontal:
+            midp = QPointF( startPoint.x() , endPoint.y() );
+            break;
+        case LinkPath::horizontalThenVertical:
+            midp = QPointF( endPoint.x() , startPoint.y() );
+            break;
+        case LinkPath::straightThenOrthogonal:
+            {
+                auto diffp = startPoint-endPoint;
+                auto diffx = std::abs(diffp.x());
+                auto diffy = std::abs(diffp.y());
+                if( diffx < diffy )
+                {
+                    if( endPoint.y() > startPoint.y() )
+                        midp = QPointF( endPoint.x() , startPoint.y()+diffx);
+                    else
+                        midp = QPointF( endPoint.x() , startPoint.y()-diffx);
+                }
+                else
+                {
+                    if( endPoint.x() > startPoint.x() )
+                        midp = QPointF( startPoint.x()+diffy , endPoint.y() );
+                    else
+                        midp = QPointF( startPoint.x()-diffy , endPoint.y() );
+                }
+            }
+            break;
+        case LinkPath::orthogonalThenStraight:
+            {
+                auto diffp = startPoint-endPoint;
+                auto diffx = std::abs(diffp.x());
+                auto diffy = std::abs(diffp.y());
+                if( diffx <= diffy )
+                {
+                    if( endPoint.y() < startPoint.y() )
+                        midp = QPointF( startPoint.x() , endPoint.y()+diffx);
+                    else
+                        midp = QPointF( startPoint.x() , endPoint.y()-diffx);
+                }
+                else
+                {
+                    if( endPoint.x() < startPoint.x() )
+                        midp = QPointF( endPoint.x()+diffy , startPoint.y() );
+                    else
+                        midp = QPointF( endPoint.x()-diffy , startPoint.y() );
+                }
+            }
+            break;
+    }
+    return midp;
+}
+
+void Link::appendLine(//const QPointF &startPoint,
+                      const QPointF &endPoint,
+                      const Link::LinkPath &linkPath)
+{
+    if( auto midp = computeMidPoint(points.getPoint(startIdx),endPoint,linkPath) )
+    {
+        midIdx = points.appendPoint(startIdx,midp.value());
+        endIdx = points.appendPoint(midIdx,endPoint);
+    }
+    else
+    {
+        midIdx = LinkTree::invalid_index;
+        endIdx = points.appendPoint(startIdx,endPoint);
+    }
+    prepareGeometryChange();
+    update();
+}
+
+void Link::insertLine(const QPointF &startPoint,
+                      const QPointF &endPoint,
+                      const Link::LinkPath &linkPath)
+{
+    auto idxInfo = points.isOnTrajectory(startPoint);
+    if( idxInfo )
+    {
+        auto &idx = idxInfo.value();
+        if( idx.overTrajectory )
+        {
+            //insert in the middle
+            startIdx = points.insertPointBefore(idx.idx,startPoint);
+        }
+        else
+        {
+            //append to a node
+            startIdx = points.appendPoint(idx.idx,startPoint);
+        }
+        appendLine(endPoint,linkPath);
+    }
+    else
+        qDebug() << "insertLine() no insertion is done.";
+    points.showRaw();
+}
+
+void Link::updateLastLine(const QPointF &endPoint, const Link::LinkPath &linkPath)
+{
+    if( auto midp = computeMidPoint(points.getPoint(startIdx),endPoint,linkPath) )
+    {
+        if( midIdx == LinkTree::invalid_index )
+        {
+            points.insertPointBefore(endIdx,midp.value());
+            midIdx = endIdx;
+            endIdx = points.getChild(midIdx);
+        }
+        else
+            points.setPoint(midIdx,midp.value());
+    }
+    else
+    {
+        if( midIdx != LinkTree::invalid_index )
+        {
+            //this means that the midp exists, and must be removed
+            points.removePointAndSubTree(endIdx);
+            endIdx = midIdx;
+            midIdx = LinkTree::invalid_index;
+        }
+    }
+    points.setPoint(endIdx,endPoint);
+    prepareGeometryChange();
+    update();
+}
+
+void Link::joinLink(Link &&link, const QPointF &joinPoint)
+{
+
+}
+
+#elif defined(LINK_V2)
+//--------------------------------------
+//------ Link::LinkTree  -------------
+Link::LinkTree::LinkTree(const QPointF& startPos,uint16_t size)
+    : nodes(size)
+{
+    //the amount of ram reserved is for size nodes, but will only
+    //use one:
+    nodes[0].point = startPos;
+    for( auto &node : nodes )
+        node.connCount = 0;
+    nodes.resize(1);
+}
+
+uint16_t Link::LinkTree::addPoint(const QPointF& parentPoint, const QPointF& pos)
+{
+    //if parent exists and pos not, the pos point will be appended
+    auto parentIdx = findIdx(parentPoint);
+    if( parentIdx.has_value() && !findIdx(pos) )
+    {
+        //iterate over the nodes to find parentIdx
+        uint16_t from = 0;
+        uint16_t to   = 1;
+        while( from < nodes.size() )
+        {
+            if( from == parentIdx.value() )
+            {
+                nodes[from].connCount++;
+                nodes.insert( nodes.begin()+to , Node{pos,0} );
+                return to;
+            }
+            to += nodes[from].connCount;
+            from++;
+        }
+    }
+    return invalid_index;
+}
+
+uint16_t Link::LinkTree::addPoint(uint16_t parentPointIdx, const QPointF& pos)
+{
+    //if parent exists the pos point will be appended
+    if( parentPointIdx >= nodes.size() )
+        return invalid_index;
+
+    //iterate over the nodes to find parentIdx
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    while( from < nodes.size() )
+    {
+        if( from == parentPointIdx )
+        {
+            nodes[from].connCount++;
+            nodes.insert( nodes.begin()+to , Node{pos,0} );
+            return to;
+        }
+        to += nodes[from].connCount;
+        from++;
+    }
+    return invalid_index;
+}
+
+void Link::LinkTree::updatePoint(uint16_t idx,const QPointF &point)
+{
+    nodes[idx].point = point;
+    updateContainerRect();
+}
+
+void Link::LinkTree::removeLastSubTree(uint16_t idx)
+{
+    if( idx >= nodes.size() )
+        return;
+
+    //if no sub trees in this node, exit
+    if( nodes[idx].connCount == 0 )
+        return;
+
+    uint16_t from = 0;
+    uint16_t to = 1;
+    iterateToMatch(from,to,idx,from);
+    iterateToMatch(from,to,to,from);
+    //now 'from' is at the begining of the tree that must be removed
+
+    uint16_t inner_from;
+    uint16_t inner_to;
+    do
+    {
+        inner_from = from;
+        inner_to = to;
+        while( nodes[inner_from].connCount != 0 )
+        {
+            if( nodes[inner_to].connCount == 0 )
+            {
+                nodes.erase(nodes.begin()+inner_to);
+                nodes[inner_from].connCount--;
+            }
+            else
+                iterateToMatch(inner_from,inner_to,inner_to,inner_from,false);
+        }
+    }
+    while( inner_from != from );
+    nodes.erase(nodes.begin()+from);
+    nodes[idx].connCount--;
+}
+
+void Link::LinkTree::removePoint(uint16_t idx)
+{
+    removeLastSubTree(idx);
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    iterateToMatch(from,to,idx,to);
+    nodes.erase(nodes.begin()+to);
+    nodes[from].connCount--;
+}
+
+uint16_t Link::LinkTree::getParent(uint16_t idx)
+{
+    uint16_t from = 0;
+    uint16_t to   = 1;
+    iterateToMatch(from,to,idx,to);
+    return from;
+}
+
+std::optional<uint16_t> Link::LinkTree::exists(const QPointF &point) const
+{
+    const auto &idx = findIdx(point);
+    if( idx.has_value() )
+        return idx.value();
+    return {};
+}
+
+void Link::LinkTree::resetIterator()
+{
+    fromIdx = 0;
+    toIdx   = 1;
+    iterCount = nodes[0].connCount;
+}
+
+std::tuple<const QPointF *, const QPointF *> Link::LinkTree::iterateLine()
+{
+    while( iterCount == 0 )
+    {
+        fromIdx++;
+        iterCount = nodes[fromIdx].connCount;
+        if( fromIdx == toIdx )
+            return {};
+    }
+    iterCount--;
+    return { &(nodes[fromIdx].point) , &(nodes[toIdx++].point) };
+}
+
+uint16_t Link::LinkTree::getIteratorIndex() const
+{
+    return fromIdx;
+}
+
+std::optional<uint16_t> Link::LinkTree::findIdx(const QPointF &point) const
+{
+    for( uint16_t i=0 ; i<nodes.size() ; i++ )
+    {
+        auto &p = nodes[i].point;
+        if( p == point )
+            return i;
+    }
+    return {};
+}
+
+void Link::LinkTree::updateContainerRect()
+{
+    auto ptl = nodes[0].point;
+    auto pbr = nodes[0].point;
+    for( uint16_t idx=1 ; idx<nodes.size() ; idx++ )
+    {
+        auto x = nodes[idx].point.x();
+        auto y = nodes[idx].point.y();
+        if( ptl.x() > x )
+            ptl.setX(x);
+        if( ptl.y() < y )
+            ptl.setY(y);
+        if( pbr.x() < x )
+            pbr.setX(x);
+        if( pbr.y() > y )
+            pbr.setY(y);
+    }
+    ptl.setX(ptl.x()-double(StyleGrid::gridSize));
+    ptl.setY(ptl.y()+double(StyleGrid::gridSize));
+    pbr.setX(pbr.x()+double(StyleGrid::gridSize));
+    pbr.setY(pbr.y()-double(StyleGrid::gridSize));
+    containerRect = QRectF(ptl,pbr);
+}
+
+void Link::LinkTree::iterateToMatch(uint16_t &from, uint16_t &to, uint16_t target, uint16_t &match, bool resetPointers)
+{
+    //if the pointers or the target is out of range, exit
+    if( to >= nodes.size() || from >= nodes.size() || target >= nodes.size() )
+        return;
+    //match should be a reference to either 'from' or 'to', otherwise exit
+    if( (&to != &match) && (&from != &match) )
+        return;
+    if( resetPointers )
+    {
+        from = 0;
+        to = 1;
+    }
+    uint16_t count = nodes[from].connCount;
+    while( match != target )
+    {
+        if( nodes[from].connCount == 0 || count == 0 )
+        {
+            from++;
+            count = nodes[from].connCount;
+        }
+        else
+        {
+            to++;
+            count--;
+        }
+    }
+}
+
 //--------------------------------------
 //------ Link::VectorTree  -------------
 //usually the sequence size needed is half of point size
@@ -201,11 +1005,6 @@ void Link::VectorTree::optimizeMem()
     }
 }
 
-void Link::VectorTree::optimizeSequence()
-{
-
-}
-
 const QPointF *Link::VectorTree::iterate()
 {
     if( repeatPrev )
@@ -274,7 +1073,7 @@ void Link::VectorTree::printEndpoints()
     qDebug("-- Endpoints:");
     for( uint16_t i=0 ; i<sIdx ; i++ )
     {
-        auto seq = getSequence(i);
+//        auto seq = getSequence(i);
     }
 }
 
@@ -361,11 +1160,9 @@ void Link::VectorTree::updateContainerRect()
 
 //--------------------------------------
 //------ Link
-Link::Link(const QPointF &startPos,LinkPath linkPath)
-    : points(3)
+Link::Link(const QPointF &startPos)
+    : points(startPos)
 {
-    points.append(startPos);
-    this->linkPath = linkPath;
 
 //    setFlags(QGraphicsItem::ItemIsMovable);
     auto effect = new QGraphicsDropShadowEffect;
@@ -382,7 +1179,6 @@ Link::Link(const Link &l)
     activePort  = l.activePort;
     pasivePorts = l.pasivePorts;
     activePort  = l.activePort;
-    linkPath = l.linkPath;
 }
 
 QRectF Link::boundingRect() const
@@ -394,26 +1190,23 @@ void Link::paint(QPainter *painter,
                  const QStyleOptionGraphicsItem *option,
                  QWidget *widget)
 {
-    Q_UNUSED(option);
-    Q_UNUSED(widget);
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
     points.resetIterator();
     painter->setPen(QPen(QBrush(StyleLink::normalColor),
                          StyleLink::width,
                          StyleLink::normalLine,
                          StyleLink::normalCap));
     painter->setFont(StyleText::blockHintFont);
-    while( auto p1 = points.iterate() )
+    auto[p1,p2] = points.iterateLine();
+    while( p1 != nullptr && p2 != nullptr )
     {
-        //draw line
-        auto p2 = points.iterate();
+        //draw line:
         painter->drawLine(*p1,*p2);
-        //draw nodes
+        //draw node:
         painter->drawEllipse(*p1,2,2);
-        //draw index
-        painter->save();
-        painter->setPen(QPen(QBrush(Qt::red),2));
-        painter->drawText(*p1+QPointF(0,0),QString::number(points.findIndex(p1)));
-        painter->restore();
+        //prepare next iteration
+        std::tie(p1,p2) = points.iterateLine();
     }
     painter->setPen(QPen(QBrush(Qt::blue),
                          1,
@@ -421,6 +1214,88 @@ void Link::paint(QPainter *painter,
                          StyleLink::normalCap));
     painter->drawRect(boundingRect());
 }
+
+//void Link::switchLinePath()
+//{
+//    switch( linkPath )
+//    {
+//    case Link::LinkPath::straight:
+//        linkPath = Link::LinkPath::verticalThenHorizontal;
+//        break;
+//    case Link::LinkPath::verticalThenHorizontal:
+//        linkPath = Link::LinkPath::horizontalThenVertical;
+//        break;
+//    case Link::LinkPath::horizontalThenVertical:
+//        linkPath = Link::LinkPath::straightThenOrthogonal;
+//        break;
+//    case Link::LinkPath::straightThenOrthogonal:
+//        linkPath = Link::LinkPath::orthogonalThenStraight;
+//        break;
+//    case Link::LinkPath::orthogonalThenStraight:
+//        linkPath = Link::LinkPath::straight;
+//        break;
+//    }
+//}
+
+void Link::setActive(const QPointF &point)
+{
+    const auto& idx = points.exists(point);
+    if( idx.has_value() )
+    {
+        activePointIdx = idx.value();
+        activeParentIdx = points.getParent(activePointIdx);
+    }
+    else
+    {
+        activePointIdx = LinkTree::invalid_index;
+        activeParentIdx = LinkTree::invalid_index;
+    }
+}
+
+void Link::updateActive(const QPointF &point)
+{
+    if( activePointIdx != LinkTree::invalid_index )
+    {
+        points.updatePoint(activePointIdx,point);
+        prepareGeometryChange();
+        update();
+    }
+}
+
+void Link::updateActiveParent(const QPointF &point)
+{
+    if( activeParentIdx != LinkTree::invalid_index )
+    {
+        points.updatePoint(activeParentIdx,point);
+        prepareGeometryChange();
+        update();
+    }
+}
+
+uint16_t Link::addPoint(const QPointF &point)
+{
+    auto idx = points.addPoint(activePointIdx,point);
+    prepareGeometryChange();
+    update();
+    return idx;
+}
+
+void Link::removePoint(const QPointF &point)
+{
+    if( auto idx = points.exists(point) )
+        points.removePoint(idx.value());
+}
+
+
+//void Link::removeLastLine()
+//{
+//    auto parentIndex = points.getParent(activePointIdx);
+//    points.removeLastSubTree(parentIndex);
+////    points.removePoint(activePointIdx);
+//    prepareGeometryChange();
+//    update();
+//}
+
 
 #elif defined LINK_V1
 Link::Link(const QPointF &pos)

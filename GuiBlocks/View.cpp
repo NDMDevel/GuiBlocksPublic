@@ -16,14 +16,14 @@ namespace GuiBlocks {
 
 View::View(QWidget *parent)
     : QGraphicsView(parent),
-      scene(parent)
+      scene(parent),
+      uiSM(this)
 {
     //setMouseTracking(true);
     //setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     setOptimizationFlag(QGraphicsView::DontSavePainterState);
     setRenderHints(QPainter::Antialiasing |
-                   QPainter::SmoothPixmapTransform |
-                   QPainter::HighQualityAntialiasing);
+                   QPainter::SmoothPixmapTransform);
 
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setCacheMode(QGraphicsView::CacheBackground);
@@ -105,13 +105,6 @@ void View::addBlock()
         scene.addItem( block );
 }
 
-void View::showLastTwoIndexes()
-{
-    uint16_t last,prev;
-    links[0]->getLastTwoIndexes(prev,last);
-    qDebug() << "prev: " << prev << " last: " << last;
-}
-
 void View::drawBackground(QPainter* painter, const QRectF &r)
 {
     QGraphicsView::drawBackground( painter , r );
@@ -148,16 +141,16 @@ void View::drawBackground(QPainter* painter, const QRectF &r)
     //  auto const &flowViewStyle = StyleCollection::flowViewStyle();
 
     QPen pfine(StyleGrid::fineGridColor,
-               StyleGrid::fineGridWidth);
+               qreal(StyleGrid::fineGridWidth));
 
     painter->setPen(pfine);
-    drawGrid(StyleGrid::gridSize);
+    drawGrid(qreal(StyleGrid::gridSize));
 
     QPen p(StyleGrid::coarseGridColor,
-           StyleGrid::coarseGridWidth);
+           qreal(StyleGrid::coarseGridWidth));
 
     painter->setPen(p);
-    drawGrid(10*StyleGrid::gridSize);
+    drawGrid(10.0*qreal(StyleGrid::gridSize));
 }
 
 void View::mousePressEvent(QMouseEvent *event)
@@ -165,62 +158,33 @@ void View::mousePressEvent(QMouseEvent *event)
     QGraphicsView::mousePressEvent(event);
 
     //This apply panView: middle mouse btn, or Alt + Left Click
-    if( ((event->modifiers() == Qt::NoModifier)  && (event->buttons() == Qt::MidButton))  ||
+    if( ((event->modifiers() == Qt::NoModifier)  && (event->buttons() == Qt::MiddleButton))  ||
         ((event->modifiers() == Qt::AltModifier) && (event->buttons() == Qt::LeftButton)) )
     {
         panViewClicPos = mapToScene(event->pos());
         return;
     }
 
-    //right clic switchs the trajectory of the link while drawing:
-    if( ((event->modifiers() == Qt::NoModifier) && (event->buttons() == Qt::RightButton)) )
-    {
-    }
-
-    //this moves the block, creates a link, or draw selection rectangle
-    if( (event->modifiers() == Qt::NoModifier) && (event->buttons() == Qt::LeftButton) )
-    {
-        auto clicPos = nextGridPosition(mapToScene(event->pos()),StyleGrid::gridSize);
-
-        //if clic over a block/port
-        if( blockMousePressHandler(pointConvertion(clicPos)) )
-            return;
-
-        //if clic over a link
-        if( linkMousePressHandler(clicPos) )
-            return;
-        else
-        {
-            auto l = new Link(clicPos);
-            links.push_back(l);
-            linkSM.setActiveLink(links.back());
-            linkSM.mousePress(clicPos);
-            scene.addItem(links.back());
-            qDebug() << "Link address: " << links.back();
-        }
-        debug_msg(links.size());
-        //handle here the selection rectangle:
-        return;
-    }
+    uiSM.mousePress(event);
 }
 
 void View::mouseMoveEvent(QMouseEvent *event)
 {
     QGraphicsView::mouseMoveEvent(event);
     //this apply panView
-    if( ((event->modifiers() == Qt::NoModifier)  && (event->buttons() == Qt::MidButton)) ||
+    if( ((event->modifiers() == Qt::NoModifier)  && (event->buttons() == Qt::MiddleButton)) ||
         ((event->modifiers() == Qt::AltModifier) && (event->buttons() == Qt::LeftButton)) )
     {
         QPointF difference = panViewClicPos - mapToScene(event->pos());
         setSceneRect(sceneRect().translated(difference.x(), difference.y()));
     }
-    if( linkSM.isReadyForMoveEvents() )
-        linkSM.mouseMove(nextGridPosition(mapToScene(event->pos()),StyleGrid::gridSize));
+
+    uiSM.mouseMove(event);
 }
 
 void View::mouseDoubleClickEvent(QMouseEvent *event)
 {
-    Q_UNUSED(event);
+    Q_UNUSED(event)
     if( event->buttons() == Qt::LeftButton )
     {
 //        qDebug() << link[0]->boundingRect();
@@ -245,20 +209,21 @@ void View::mouseDoubleClickEvent(QMouseEvent *event)
 void View::keyPressEvent(QKeyEvent *event)
 {
     QGraphicsView::keyPressEvent(event);
-    if( event->key() == Qt::Key_Escape )
-    {
-        //cancel link
-        linkSM.cancelDraw();
-    }
+    uiSM.keyPress(event);
+    if( event->key() == Qt::Key::Key_S )
+        if( links.size() > 0 )
+        {
+            qDebug() << "+ + + + + + + + + +";
+            links[links.size()-1]->show();
+            qDebug() << "+ + + + + + + + + +";
+        }
 }
 
 void View::mouseReleaseEvent(QMouseEvent *event)
 {
     QGraphicsView::mouseReleaseEvent(event);
     if( (event->modifiers() == Qt::NoModifier) && (event->button() == Qt::LeftButton) )
-    {
-        linkMouseReleaseHandler(nextGridPosition(mapToScene(event->pos()),StyleGrid::gridSize));
-    }
+        uiSM.mouseRelease(event);
 }
 
 void View::resizeEvent(QResizeEvent *event)
@@ -297,51 +262,41 @@ void View::paintEvent(QPaintEvent *event)
  * position to a valid one (that is properly located inside the
  * port's shape, taking into account the block orientation).
  */
-void View::syncLinkPosToBlockPort(const Block *block,
-                                  const Block::Port *port,
-                                  const QPointF& mousePos,
-                                  QPointF &targetPos) const
-{
-    (void)mousePos;
-    if( port->dir == Block::PortDir::Input )
-    {
-        if( block->getBlockOrientation() == Block::BlockOrientation::East )
-            targetPos.setX(port->connectorShape.boundingRect().width());
-        else
-            targetPos.setX(0);
-    }
-    else
-    {
-        if( block->getBlockOrientation() == Block::BlockOrientation::East )
-            targetPos.setX(0);
-        else
-            targetPos.setX(port->connectorShape.boundingRect().width());
-    }
-    targetPos.setY(port->connectorShape.boundingRect().height()/2.0);
-    targetPos = mapToScene(targetPos.x(),targetPos.y());
-    //    targetPos = nextGridPosition(mousePos-targetPos,StyleGrid::StyleGrid::gridSize);
-}
+//void View::syncLinkPosToBlockPort(const Block *block,
+//                                  const Block::Port *port,
+//                                  const QPointF& mousePos,
+//                                  QPointF &targetPos) const
+//{
+//    (void)mousePos;
+//    if( port->dir == Block::PortDir::Input )
+//    {
+//        if( block->getBlockOrientation() == Block::BlockOrientation::East )
+//            targetPos.setX(port->connectorShape.boundingRect().width());
+//        else
+//            targetPos.setX(0);
+//    }
+//    else
+//    {
+//        if( block->getBlockOrientation() == Block::BlockOrientation::East )
+//            targetPos.setX(0);
+//        else
+//            targetPos.setX(port->connectorShape.boundingRect().width());
+//    }
+//    targetPos.setY(port->connectorShape.boundingRect().height()/2.0);
+//    targetPos = mapToScene(int(targetPos.x()),
+//                           int(targetPos.y()));
+//    //    targetPos = nextGridPosition(mousePos-targetPos,StyleGrid::StyleGrid::gridSize);
+//}
 
-std::tuple<Block *, Block::Port *> View::getBlockAndPortUnderMouse(const QPoint &mousePos) const
+void View::moveBlockToFront(Block *block) const
 {
-    auto itemlist = items(mousePos);
-    for( auto item : itemlist )
-    {
-        Block *block = dynamic_cast<Block*>(item);
-        if( block )
-        {
-            bool isMouseOver = block->isMouseOverBlock(mapToBlock(block,mousePos));
-            if( isMouseOver )
-                return {block,nullptr};
-            else
-            {
-                Block::Port* port = block->isMouseOverPort(mapToBlock(block,mousePos));
-                if( port )
-                    return {block,port};
-            }
-        }
-    }
-    return {nullptr,nullptr};
+    auto itemlist = items();
+    auto maxZ = itemlist.size()-1;
+    block->setZValue(qreal(maxZ));
+    auto z = 0;
+    for( auto item = itemlist.end()-1 ; item >= itemlist.begin() ; --item )
+        if( *item != block )
+            (*item)->setZValue(z++);
 }
 
 QPointF View::mapToBlock(const Block *block, const QPoint &mousePos) const
@@ -349,158 +304,243 @@ QPointF View::mapToBlock(const Block *block, const QPoint &mousePos) const
     return mapToScene(mousePos) - block->pos();
 }
 
-void View::moveBlockToFront(Block *block) const
+//--------------------------------------
+//------ View::MouseStateMachine  ------
+void View::UserInterfaceStateMachine::mousePress(QMouseEvent *event)
 {
-    auto itemlist = items();
-    int maxZ = itemlist.size()-1;
-    block->setZValue(maxZ);
-    int z = 0;
-    for( auto item = itemlist.end()-1 ; item >= itemlist.begin() ; --item )
-        if( *item != block )
-            (*item)->setZValue(z++);
+    if( st == States::waitPress )
+    {
+        if( event->button() != Qt::LeftButton )
+            return;
+        //stores the start pos to undo the action if a cancel operation is requested
+        auto pos = nextGridPosition(parent->mapToScene(event->pos()),StyleGrid::gridSize);
+        startOrPrevMousePos = pos;
+        activeItem = getItemUnderMouse(event->pos());
+        st = States::triggerAction;
+        return;
+    }
+    if( st == States::updateEndPoint )
+    {
+        if( event->button() == Qt::LeftButton )
+        {
+            activeItem.reset();
+            st = States::waitRelease;
+            return;
+        }
+        if( event->button() == Qt::RightButton )
+        {
+            auto pos = nextGridPosition(parent->mapToScene(event->pos()),StyleGrid::gridSize);
+            switchLinkPath();
+            updateActiveLine(pos);
+            return;
+        }
+        return;
+    }
+    if( st == States::startNewLink )
+    {
+        if( event->button() == Qt::LeftButton )
+        {
+            activeItem.reset();
+            st = States::waitRelease;
+            return;
+        }
+        if( event->button() == Qt::RightButton )
+            switchLinkPath();
+        return;
+    }
 }
 
-void View::switchLinePath()
+void View::UserInterfaceStateMachine::mouseMove(QMouseEvent *event) noexcept
 {
-    switch( linkpath )
+    if( st == States::startNewLink )
+    {
+        auto pos = nextGridPosition(parent->mapToScene(event->pos()),StyleGrid::gridSize);
+        if( startOrPrevMousePos == pos )  //move in ?
+            return; //move in -> return
+        else
+        {
+            //move out:
+            if( !activeItem )
+            {
+                //start a new line not connected
+                activeItem = new Link(startOrPrevMousePos);
+                auto &link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+//                link->insertLine(startOrPrevMousePos,pos,linkPath);
+                link->appendLine(pos,linkPath);
+                parent->links.push_back(link);
+                parent->scene.addItem(link);
+            }
+            else
+            {
+                switch( static_cast<ActiveItemIdx>(activeItem.value().index()) )
+                {
+                    case ActiveItemIdx::LinkIdx:
+                        {
+                            auto &link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+                            link->insertLine(startOrPrevMousePos,pos,linkPath);
+                        }
+                        break;
+                    case ActiveItemIdx::PortIdx:
+                        break;
+                    default:
+                        qDebug() << "********************** this message represents a THROW (uiSM->mouseMove) [startNewLink should not be reached with activeItem different to Link and Port]]";
+                        break;
+                }
+            }
+        }
+        startOrPrevMousePos = pos;
+        st = States::updateEndPoint;
+        return;
+    }
+    if( st == States::updateEndPoint )
+    {
+        auto pos = nextGridPosition(parent->mapToScene(event->pos()),StyleGrid::gridSize);
+        if( startOrPrevMousePos == pos )    //move in?
+            return; //move in -> return
+        else
+        {
+            startOrPrevMousePos = pos;
+            updateActiveLine(pos);  //move out:
+        }
+        return;
+    }
+    if( st == States::triggerAction )
+    {
+        auto pos = nextGridPosition(parent->mapToScene(event->pos()),StyleGrid::gridSize);
+        if( startOrPrevMousePos == pos )    //move in?
+            return; //move in -> return
+
+        //if no item under cursor, then a new link is started
+        if( !activeItem )
+        {
+            st = States::startNewLink;
+            return;
+        }
+        //a link, a block or a port is under mouse:
+        auto &item_ptr = activeItem.value();
+        switch( item_ptr.index() )  //not completed
+        {
+            case 0: //Port*
+                break;
+            case 1: //Block* -> nothing
+                activeItem.reset();
+                st = States::waitPress;
+                return;
+            case 2: //Link* -> start new link
+                qDebug() << "over a link";
+                //auto &link = std::get<ItemIdx::LinkIdx>(item_ptr);
+                //link->appendLine(event->pos(),event->pos(),linkPath);
+                return;
+            default:
+                qDebug() << "********************** this message represents a THROW (uiSM->mouseRelease) [variant value without switch handler]";
+                break;
+        }
+        return;
+    }
+}
+
+void View::UserInterfaceStateMachine::mouseRelease(QMouseEvent *event)
+{
+    //auto pos = nextGridPosition(parent->mapToScene(event->pos()),StyleGrid::gridSize);
+    if( st == States::triggerAction )
+    {
+        if( activeItem )
+            if( activeItem.value().index() == ActiveItemIdx::BlockIdx )
+            {
+                activeItem.reset();
+                st = States::waitPress;
+            }
+        st = States::startNewLink;
+        return;
+    }
+    if( st == States::waitRelease )
+    {
+        if( event->button() == Qt::LeftButton )
+        {
+            st = States::waitPress;
+            return;
+        }
+        return;
+    }
+}
+
+void View::UserInterfaceStateMachine::keyPress(QKeyEvent *event)
+{
+    if( event->key() == Qt::Key::Key_Escape )
+    {
+        //cancel action (link drawing, selection area or block move)
+    }
+}
+
+void View::UserInterfaceStateMachine::switchLinkPath()
+{
+    switch( linkPath )
     {
     case Link::LinkPath::straight:
-        linkpath = Link::LinkPath::verticalThenHorizontal;
+        linkPath = Link::LinkPath::verticalThenHorizontal;
         break;
     case Link::LinkPath::verticalThenHorizontal:
-        linkpath = Link::LinkPath::horizontalThenVertical;
+        linkPath = Link::LinkPath::horizontalThenVertical;
         break;
     case Link::LinkPath::horizontalThenVertical:
-        linkpath = Link::LinkPath::straightThenOrthogonal;
+        linkPath = Link::LinkPath::straightThenOrthogonal;
         break;
     case Link::LinkPath::straightThenOrthogonal:
-        linkpath = Link::LinkPath::orthogonalThenStraight;
+        linkPath = Link::LinkPath::orthogonalThenStraight;
         break;
     case Link::LinkPath::orthogonalThenStraight:
-        linkpath = Link::LinkPath::straight;
+        linkPath = Link::LinkPath::straight;
         break;
     }
 }
 
-void View::redrawActiveLink(const QPointF& pos)
+std::optional<std::variant<Block::Port*,Block*,Link*>>
+View::UserInterfaceStateMachine::getItemUnderMouse(const QPoint &mousePos) const
 {
-    (void)pos;
-//    if( link.size() == 0 )
-//        return;
-//    int index = link.size()-2;
-//    auto line1 = link[index  ]->line();
-//    auto line2 = link[index+1]->line();
-//    QPointF midp;
-//    switch( linkpath )
-//    {
-//    case LinkPath::straight:
-//        midp = (pos+line1.p1())/2.0f; //equals to: p1+(endPos-p1)/2
-//        break;
-//    case LinkPath::verticalThenHorizontal:
-//        midp = QPointF( line1.p1().x() , pos.y() );
-//        break;
-//    case LinkPath::horizontalThenVertical:
-//        midp = QPointF( pos.x() , line1.p1().y() );
-//        break;
-//    case LinkPath::straightThenOrthogonal:
-//    {
-//        auto diffp = line1.p1()-pos;
-//        auto diffx = std::abs(diffp.x());
-//        auto diffy = std::abs(diffp.y());
-//        if( diffx < diffy )
-//        {
-//            if( pos.y() > line1.p1().y() )
-//                midp = QPointF( pos.x() , line1.p1().y()+diffx);
-//            else
-//                midp = QPointF( pos.x() , line1.p1().y()-diffx);
-//        }
-//        else
-//        {
-//            if( pos.x() > line1.p1().x() )
-//                midp = QPointF( line1.p1().x()+diffy , pos.y() );
-//            else
-//                midp = QPointF( line1.p1().x()-diffy , pos.y() );
-//        }
-//    }
-//        break;
-//    case LinkPath::orthogonalThenStraight:
-//    {
-//        auto diffp = line1.p1()-pos;
-//        auto diffx = std::abs(diffp.x());
-//        auto diffy = std::abs(diffp.y());
-//        if( diffx <= diffy )
-//        {
-//            if( pos.y() < line1.p1().y() )
-//                midp = QPointF( line1.p1().x() , pos.y()+diffx);
-//            else
-//                midp = QPointF( line1.p1().x() , pos.y()-diffx);
-//        }
-//        else
-//        {
-//            if( pos.x() < line1.p1().x() )
-//                midp = QPointF( pos.x()+diffy , line1.p1().y() );
-//            else
-//                midp = QPointF( pos.x()-diffy , line1.p1().y() );
-//        }
-//    }
-//        break;
-//    }
-//    line1.setP2(midp);
-//    line2.setP1(midp);
-//    line2.setP2(pos);
-//    link[index  ]->setLine(line1);
-    //    link[index+1]->setLine(line2);
-}
-
-bool View::blockMousePressHandler(const QPoint &pos)
-{
-    //get block and/or port under mouse
-    auto[block,port] = getBlockAndPortUnderMouse(pos);
-
-    //click over a block??
-    if( block != nullptr )
+    auto items = parent->scene.items(parent->mapToScene(mousePos));
+    //The top item will be retrieved in the following order:
+    //1- block port
+    //2- block (dragArea)
+    //3- link
+    //This means that if under the mousePos there are multiple objects of interest,
+    //it will first return the block port, if there is not block port, then a block
+    //and finally a link.
+    for( auto& item : items )
     {
-        //Move the clicked block to the top of the screen
-        moveBlockToFront(block);
-        //click over a port, if so a new link is started
-        //(but only if port is unconnected)
-        if( port != nullptr )
+        Block *block = dynamic_cast<Block*>(item);
+        if( block )
         {
-            //check if the port is unconnected
-            return true;
+            Block::Port* port = block->isMouseOverPort(parent->mapToBlock(block,mousePos));
+            if( port )
+                return port;
+            if( block->isMouseOverBlock(parent->mapToBlock(block,mousePos)) )
+                return block;
         }
-
-        //click over a block (but not over a port)
-        //so the the block must be moved with the mouse
-        //(since this is the default behavior nothing
-        //needs to be done)
-        return true;
+        if( auto link = dynamic_cast<Link*>(item) )
+        {
+            if( link->containsPoint(parent->mapToScene(mousePos)) )
+                return link;
+        }
     }
-    return false;
+    return {};
 }
 
-bool View::linkMousePressHandler(const QPointF &pos)
+void View::UserInterfaceStateMachine::updateActiveLine(const QPointF &pos)
 {
-    bool overLink = false;
-    linkSM.setActiveLink(nullptr);
-    for( auto& link : links )
-        if( (overLink = link->containsPoint(pos)) )
-        {
-            linkSM.setActiveLink(link);
-            linkSM.mousePress(pos);
-            break;
-        }
-    return overLink;
-}
-
-void View::linkMouseMoveHandler(const QPointF &pos)
-{
-    linkSM.mouseMove(pos);
-}
-
-void View::linkMouseReleaseHandler(const QPointF &pos)
-{
-    linkSM.mouseRelease(pos);
+    if( !activeItem )
+    {
+        //this should never be reached, is place here to allow the compiler to remove
+        //the exception handling code
+        qDebug() << "********************** this message represents a THROW (uiSM->UpdateEndPoint) [optional without value]";
+        return;
+    }
+    if( activeItem.value().index() != ActiveItemIdx::LinkIdx )
+    {
+        qDebug() << "********************** this message represents a THROW (uiSM->UpdateEndPoint) [variant with incorrent type (should be a Link*)]";
+        return;
+    }
+    auto &link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+    link->updateLastLine(pos,linkPath);
 }
 
 //--------------------------------------
@@ -511,101 +551,215 @@ void View::LinkStateMachine::setActiveLink(Link *link)
     st = States::waittingPress;
 }
 
-void View::LinkStateMachine::mousePress(const QPointF &point)
+void View::LinkStateMachine::mousePress(const QPointF &pos)
 {
     if( st == States::waittingPress )
     {
-        pos = point;
-        link->appendPoint(point);
-        st = States::waittingMoveOrRelease;
-//        qDebug() << "waittingPress -> waittingMoveOrRelease";
+        prevPos = pos;
+        firstPos = pos;
+//        link->setActive(prevPos);
+        st = States::validatePress;
         return;
     }
-    if( st == States::drawingAndWaittingPress )
+    if( st == States::waittingMove )
     {
-        st = States::waittingMoveOrRelease;
-        pos = point;
-//        qDebug() << "drawingAndWaittingPress -> waittingPress";
+        st = States::waittingRelease;
         return;
     }
-}
-
-void View::LinkStateMachine::mouseMove(const QPointF &point)
-{
-    if( st == States::waittingMoveOrRelease )
+    if( st == States::update )
     {
-        if( pos != point ) //mouse has moved ?
-        {
-            if( link->length() == 1 )
-            {
-                link->deleteLastLine();
-                st = States::waittingPress;
-            }
-            else
-            {
-                //this modify active point
-                link->updateLastPoint(point);
-                st = States::movingAndWaittingRelease;
-            }
-//            qDebug() << "waittingMoveOrRelease -> movingAndWaittingRelease";
-        }
-        return;
-    }
-    if( st == States::appendNewLine )
-    {
-        if( pos != point ) //mouse has moved ?
-        {
-            link->appendPoint(point);
-            st = States::drawingAndWaittingPress;
-        }
-        return;
-    }
-    if( st == States::drawingAndWaittingPress )
-    {
-        link->updateLastPoint(point);
-        return;
-    }
-    if( st == States::movingAndWaittingRelease )
-    {
-        link->updateLastPoint(point);
+        st = States::waittingRelease;
         return;
     }
 }
 
-void View::LinkStateMachine::mouseRelease(const QPointF &point)
+void View::LinkStateMachine::mouseMove(const QPointF &pos)
 {
-    if( st == States::movingAndWaittingRelease )
+    if( st == States::validatePress )
     {
-        link->updateLastPoint(point);
-        link = nullptr;
+        if( prevPos != pos )
+        {
+            prevPos = pos;
+//            link->updateActive(pos);
+            st = States::drag;
+        }
+        return;
+    }
+    if( st == States::drag )
+    {
+        if( prevPos != pos )
+        {
+            prevPos = pos;
+//            link->updateActive(pos);
+        }
+        return;
+    }
+    if( st == States::waittingMove )
+    {
+        if( prevPos != pos)
+        {
+//            prevPos = pos;
+//            link->appendPoint(pos);
+//            link->setActive(pos);
+//            appendLine(pos);
+            st = States::update;
+        }
+        return;
+    }
+    if( st == States::update )
+    {
+        if( prevPos != pos )
+        {
+            prevPos = pos;
+//            if( auto midp = computeMidPoint(pos) )
+//                link->updateActiveParent(midp.value());
+//            link->updateActive(pos);
+        }
+        return;
+    }
+}
+
+void View::LinkStateMachine::mouseRelease(const QPointF &)
+{
+    if( st == States::drag )
+    {
+        setActiveLink(nullptr);
         st = States::waittingPress;
-//        qDebug() << "movingAndWaittingRelease -> waittingPress";
         return;
     }
-    if( st == States::waittingMoveOrRelease )
+    if( st == States::validatePress )
     {
-        //a new link is started
-        //link->appendPoint(point);
-        st = States::appendNewLine;
-//        qDebug() << "waittingMoveOrRelease -> appendNewLine";
+        st = States::waittingMove;
+        return;
+    }
+    if( st == States::waittingRelease )
+    {
+        st = States::waittingPress;
         return;
     }
 }
 
 void View::LinkStateMachine::cancelDraw()
 {
-    if( st == States::drawingAndWaittingPress ||
-        st == States::waittingMoveOrRelease   )
+    if( st == States::drag )
     {
+//        link->updateActive(firstPos);
+        setActiveLink(nullptr);
         st = States::waittingPress;
-        link->deleteLastLine();
-        link = nullptr;
+        return;
     }
-    if( st == States::appendNewLine )
+    if( st == States::update )
     {
+//        link->updateActive(firstPos);
+//        link->removeLastLine();
+        setActiveLink(nullptr);
+//        st = States::waittingRelease;
         st = States::waittingPress;
-        link = nullptr;
+        return;
     }
 }
+
+void View::LinkStateMachine::switchLinkPath()
+{
+    switch( linkPath )
+    {
+    case Link::LinkPath::straight:
+        linkPath = Link::LinkPath::verticalThenHorizontal;
+        break;
+    case Link::LinkPath::verticalThenHorizontal:
+        linkPath = Link::LinkPath::horizontalThenVertical;
+        break;
+    case Link::LinkPath::horizontalThenVertical:
+        linkPath = Link::LinkPath::straightThenOrthogonal;
+        break;
+    case Link::LinkPath::straightThenOrthogonal:
+        linkPath = Link::LinkPath::orthogonalThenStraight;
+        break;
+    case Link::LinkPath::orthogonalThenStraight:
+        linkPath = Link::LinkPath::straight;
+        break;
+    }
+}
+
+//void View::LinkStateMachine::appendLine(const QPointF &pos)
+//{
+//    prevPos = pos;
+//    if( auto midp = computeMidPoint(pos) )
+//    {
+////        auto pidx = link->addPoint(midp.value());
+////        auto idx  = link->addPoint(pos);
+//    }
+//    else
+//        link->addPoint(pos);
+//    link->setActive(pos);
+//}
+
+//std::optional<QPointF> View::LinkStateMachine::computeMidPoint(const QPointF &pos)
+//{
+//    QPointF midp;
+////    auto[idx,pidx] = link->getActiveAndParent();
+////    auto pidx = link->getActiveParentIdx();
+//    auto p1 = (*link)[pidx];
+//    switch( linkPath )
+//    {
+//        case LinkPath::straight:
+//            return {};
+//        case LinkPath::verticalThenHorizontal:
+//            midp = QPointF( p1.x() , pos.y() );
+//            break;
+//        case LinkPath::horizontalThenVertical:
+//            midp = QPointF( pos.x() , p1.y() );
+//            break;
+//        case LinkPath::straightThenOrthogonal:
+//            {
+//                auto diffp = p1-pos;
+//                auto diffx = std::abs(diffp.x());
+//                auto diffy = std::abs(diffp.y());
+//                if( diffx < diffy )
+//                {
+//                    if( pos.y() > p1.y() )
+//                        midp = QPointF( pos.x() , p1.y()+diffx);
+//                    else
+//                        midp = QPointF( pos.x() , p1.y()-diffx);
+//                }
+//                else
+//                {
+//                    if( pos.x() > p1.x() )
+//                        midp = QPointF( p1.x()+diffy , pos.y() );
+//                    else
+//                        midp = QPointF( p1.x()-diffy , pos.y() );
+//                }
+//            }
+//            break;
+//        case LinkPath::orthogonalThenStraight:
+//            {
+//                auto diffp = p1-pos;
+//                auto diffx = std::abs(diffp.x());
+//                auto diffy = std::abs(diffp.y());
+//                if( diffx <= diffy )
+//                {
+//                    if( pos.y() < p1.y() )
+//                        midp = QPointF( p1.x() , pos.y()+diffx);
+//                    else
+//                        midp = QPointF( p1.x() , pos.y()-diffx);
+//                }
+//                else
+//                {
+//                    if( pos.x() < p1.x() )
+//                        midp = QPointF( pos.x()+diffy , p1.y() );
+//                    else
+//                        midp = QPointF( pos.x()-diffy , p1.y() );
+//                }
+//            }
+//            break;
+//    }
+//    return midp;
+//}
+
+//void View::LinkStateMachine::removeLink()
+//{
+////    if( link )
+////        link->removeLastLine();
+//}
 
 } // namespace GuiBlocks

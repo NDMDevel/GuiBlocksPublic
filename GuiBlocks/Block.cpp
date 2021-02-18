@@ -25,7 +25,7 @@ Block::Block(const QString &type,
       dir(BlockOrientation::East),
       nInputs(0),
       nOutputs(0),
-      center(0.0f,0.0f),
+      center(0.0,0.0),
       blockOrientation(BlockOrientation::West),
       portIndexHintToDraw(-1)
 {
@@ -42,19 +42,12 @@ Block::Block(const QString &type,
     setBlockEffect(StyleBlockShape::shadowColor);
 
     //block style:
-    setOpacity(StyleBlockShape::opacity);
+    setOpacity(qreal(StyleBlockShape::opacity));
 }
 
 Block::~Block()
 {
-    //if this block is currently under the mouse,
-    //clears the pointers to avoid access to a deleted
-    //object
-//    if( blockUnderMouse == this )
-//    {
-//        blockUnderMouse = nullptr;
-//        portUnderMouse  = nullptr;
-//    }
+
 }
 
 void Block::addPort(Block::PortDir dir,QString type,QString name)
@@ -120,15 +113,9 @@ QPointF Block::getPortConnectionPoint(const Block::Port &port)
 
 Block::Port* Block::isMouseOverPort(const QPointF &pos)
 {
-//    auto localPos = /*mapFromScene*/(pos);
-//    portUnderMouse = nullptr;
     for( int i=0 ; i<ports.length() ; i++ )
         if( (*ports[i]).connectorShape.boundingRect().contains(pos) )
-        {
-//            portUnderMouse  = &(*ports[i]);
-//            blockUnderMouse = portUnderMouse->getParent();
             return &(*ports[i]);
-        }
     return nullptr;
 }
 //
@@ -169,6 +156,7 @@ Block::Port* Block::isMouseOverPort(const QPointF &pos)
 bool Block::isMouseOverBlock(const QPointF &pos)
 {
     bool isOver = dragArea.contains(pos);
+//    qDebug() << dragArea << pos << isOver;
     return isOver;
 }
 
@@ -188,8 +176,8 @@ void Block::paint(QPainter *painter,
 {
     //painter->setClipRect(option->exposedRect);
 
-    Q_UNUSED(option);
-    Q_UNUSED(widget);
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
 
 //    debug_msg("paint");
 
@@ -219,35 +207,34 @@ void Block::mousePressEvent(QGraphicsSceneMouseEvent *event)
     if( event->button() == Qt::MouseButton::LeftButton )
     {
         //if the clic pos is not over the drag area, the event
-        //is ignore and therefore sent to the block that is behind
-        //this (if any)
+        //is ignore and therefore sent to the block that is behind if any
         if( isMouseOverBlock(event->pos()) )
             enableDrag = true;
         else
             event->ignore();
         return;
 
-        //if the clic pos is not over the drag area nor a port,
-        //the event is send to the block that is behind this (if any)
-        if( !isMouseOverBlock(event->pos()) && !isMouseOverPort(event->pos()) )
-//        if( getBlockUnderMouse() != this /*&& getPortUnderMouse() == nullptr*/ )
-        {
-            event->ignore();
-            return;
-        }
-#warning "This lines should be removed because view obj should do this instead of the block."
-        auto items = collidingItems();
-        for( auto item : items )
-        {
-            if( item->zValue() > 0 )
-                item->setZValue(0);
-        }
-        setZValue(1);
-        if( dragArea.contains(event->pos()) )
-            enableDrag = true;
-//        else
-//            debug_msg("click over port");
-//        event->accept();
+//        //if the clic pos is not over the drag area nor a port,
+//        //the event is send to the block that is behind this (if any)
+//        if( !isMouseOverBlock(event->pos()) && !isMouseOverPort(event->pos()) )
+//        //if( getBlockUnderMouse() != this /*&& getPortUnderMouse() == nullptr*/ )
+//        {
+//            event->ignore();
+//            return;
+//        }
+//#warning "This lines should be removed because view obj should do this instead of the block."
+//        auto items = collidingItems();
+//        for( auto item : items )
+//        {
+//            if( item->zValue() > 0 )
+//                item->setZValue(0);
+//        }
+//        setZValue(1);
+//        if( dragArea.contains(event->pos()) )
+//            enableDrag = true;
+//        //else
+//        //    debug_msg("click over port");
+//        //event->accept();
     }
 }
 
@@ -345,7 +332,7 @@ void Block::updateBoundingRect()
     //This inner width will always be an even multiple of the gridSize
     QFontMetrics fontMetrics = QFontMetrics(StyleText::blockTypeFont);
     float innerBlockWidth = 2.0f*StyleText::gapTypeToBorderGridSizePercent*fontMetrics.capHeight()
-                            + fontMetrics.width(_type);
+                            + fontMetrics.horizontalAdvance(_type);
     innerBlockWidth  = nextEvenGridValue(innerBlockWidth,StyleGrid::gridSize);
 
     //Compute Max width of the texts:
@@ -355,7 +342,7 @@ void Block::updateBoundingRect()
     //This text width (maxPortTextWidth) or the inner block width (innerBlockWidth),
     //whichever greater, will define the boundingRect width (maxBoundingWidth):
     fontMetrics = QFontMetrics(StyleText::blockNameFont);
-    float maxPortTextWidth = fontMetrics.width(name);
+    float maxPortTextWidth = fontMetrics.horizontalAdvance(name);
     fontMetrics = QFontMetrics(StyleText::blockHintFont);
     bool hasPortType = false;
     bool hasPortName = false;
@@ -363,12 +350,12 @@ void Block::updateBoundingRect()
     {
         if( (*port).name != "" )
             hasPortName = true;
-        int width = fontMetrics.width((*port).name);
+        int width = fontMetrics.horizontalAdvance((*port).name);
         maxPortTextWidth = max(width,maxPortTextWidth);
         if( (*port).type != "" )
         {
             hasPortType = true;
-            width = fontMetrics.width("("+(*port).type+")");
+            width = fontMetrics.horizontalAdvance("("+(*port).type+")");
             maxPortTextWidth = max(width,maxPortTextWidth);
         }
     }

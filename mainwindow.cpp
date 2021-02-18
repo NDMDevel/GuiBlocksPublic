@@ -33,7 +33,7 @@ void MainWindow::btnAddItem()
 void MainWindow::btnFlipH()
 {
 //    ui->MainView->showLastTwoIndexes();
-    ui->MainView->printSeq();
+//    ui->MainView->printSeq();
 }
 
 void MainWindow::btnForceConnected()

@@ -80,6 +80,16 @@ QPointF pointConvertion(const QPoint  &point)
     return pointf;
 }
 
+double squareDistance(const QPointF &p1, const QPointF &p2)
+{
+    return std::pow(p1.x()-p2.x(),2.0) + std::pow(p1.y()-p2.y(),2.0);
+}
+
+bool equals(double x1, double x2, double maxDiff)
+{
+    return std::abs(x1-x2) < maxDiff;
+}
+
 template<typename T>
 std::tuple<T,T> minmax(const std::vector<T>& args)
 {
@@ -96,11 +106,5 @@ std::tuple<T,T> minmax(const std::vector<T>& args)
         }
     return {min,max};
 }
-
-double squareDistance(const QPointF &p1, const QPointF &p2)
-{
-    return std::pow(p1.x()-p2.x(),2.0) + std::pow(p1.y()-p2.y(),2.0);
-}
-
 
 } // namespace GuiBlocks

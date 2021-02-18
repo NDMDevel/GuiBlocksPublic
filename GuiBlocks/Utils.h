@@ -17,8 +17,8 @@ bool    isInteger(const double &val);
 QPoint  pointConvertion(const QPointF &pointf);
 QPointF pointConvertion(const QPoint  &point);
 double  squareDistance(const QPointF& p1,const QPointF& p2);
-template<typename T>
-std::tuple<T,T> minmax(const std::vector<T>& args);
+bool    equals(double x1,double x2,double maxDiff=1.0e-6);
+template<typename T> std::tuple<T,T> minmax(const std::vector<T>& args);
 
 #define debug_msg(str) do{static int count=0;qDebug() << str << count++;}while(0)
 

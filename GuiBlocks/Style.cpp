@@ -4,8 +4,8 @@
 
 namespace GuiBlocks {
 
-float  StyleText::gapTypeToBorderGridSizePercent = 0.7;
-float  StyleText::gapTextToBorderGridSizePercent = 0.25;
+float  StyleText::gapTypeToBorderGridSizePercent = 0.7f;
+float  StyleText::gapTextToBorderGridSizePercent = 0.25f;
 QFont  StyleText::blockTypeFont = QFont("Ubuntu", 11);
 QColor StyleText::blockTypeColor = Qt::red;
 QFont  StyleText::blockNameFont = QFont("Ubuntu", 11);
@@ -13,7 +13,7 @@ QColor StyleText::blockNameColor = Qt::blue;
 QFont  StyleText::blockHintFont = QFont("Ubuntu", 11);
 QColor StyleText::blockHintColor = Qt::black;
 
-QSizeF StyleBlockShape::connectorSizeGridSizePercent(0.7f,0.7f);
+QSizeF StyleBlockShape::connectorSizeGridSizePercent(0.7,0.7);
 QColor StyleBlockShape::blockRectBorderColor        = "#202020";//Qt::gray;
 QColor StyleBlockShape::blockRectBorderColorOnHover = Qt::black;
 QColor StyleBlockShape::shadowColor                 = "#202020";//Qt::gray;
@@ -38,7 +38,7 @@ QColor StyleGrid::coarseGridColor     = Qt::gray;
 
 QColor StyleLink::normalColor        = Qt::blue;
 //QColor StyleLink::selectedColor    = Qt::magenta;
-float  StyleLink::width              = 4;
+float  StyleLink::width              = 4.0f;
 QColor StyleLink::shadowColor   = "#202020";
 Qt::PenStyle    StyleLink::normalLine = Qt::SolidLine;
 Qt::PenCapStyle StyleLink::normalCap  = Qt::RoundCap;
