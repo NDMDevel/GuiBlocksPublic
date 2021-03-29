@@ -26,6 +26,7 @@ private slots:
     void btnFlipH();
     void btnForceConnected();
     void lineEditUpdated();
+    void displayCoordOnStatusBar(const QPointF&);
 
 private:
     //------------ User Section END

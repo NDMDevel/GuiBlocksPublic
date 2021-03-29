@@ -10,14 +10,12 @@
 #include <QGraphicsDropShadowEffect>
 #include "GuiBlocks/Style.h"
 #include "GuiBlocks/TypeID.h"
-//#include "GuiBlocks/Link.h"
-//#include "GuiBlocks/TypeID.h"
 
 namespace GuiBlocks {
 
 class Block : public QGraphicsItem
 {
-public:
+public: //exported types
     enum class PortDir
     {
         Input,
@@ -29,51 +27,26 @@ public:
         PortDir dir = PortDir::Input;
         QString type;
         QString name;
+        uint32_t uid;
         bool    connected = false;
         bool    multipleConnections = false;
-        //std::shared_ptr<Link*> linkAttached;
+        std::weak_ptr<Port> getCopy() const { return parent->getWeakPtr(this); }
         QPainterPath connectorShape;
         Port(){}
         Port(Block *parent,PortDir dir,QString type,QString name="");
-        Block* getParent(){ return parent; }
+        Block* getParent() const { return parent; }
     };
     enum class BlockOrientation
     {
-        East,   //left  to right
-        West    //right to left
+        East,   //left  to right (input at right, outputs at left)
+        West    //right to left  (input at left, outputs at right)
     };
-private:
-    //ctor required
-    QString _type;
-    QString name;
 
-private:
-    //internals
-    QRectF blockRect;
-    QRectF dragArea;
-    QVector<std::shared_ptr<Port>> ports;
-    BlockOrientation dir;
-    int nInputs;
-    int nOutputs;
-    QPointF center;
-    BlockOrientation blockOrientation;
-    int portIndexHintToDraw;
-    bool enableDrag = false;
-    bool hover = false;
-
-    //when mouse is over a block, the pointer blockUderMouse
-    //is set with the block address. If the mouse is also over
-    //a port, portUnderMouse y set with the address of the port.
-    //Note: this are updated in hoverMoveEvent and hoverLeaveEvent.
-//    static Block*       blockUnderMouse;
-//    static Block::Port* portUnderMouse;
-
-public:
+public: //general methods
     Block(const QString &_type,
           const QString &name,
           QGraphicsItem *parent = nullptr);
     virtual ~Block() override;
-
     int type() const override{return static_cast<int>(TypeID::BlockID);}
 
     const QString& getType() const { return _type; }
@@ -86,8 +59,8 @@ public:
     void setCentralPosition(const QPointF &centerPos);    //should be this implemented?
     QPointF getPortConnectionPoint(const Port &port);
     Port* isMouseOverPort(const QPointF &pos);
-//    bool isMouseOverPort(const QPointF &pos,QPointF& connectionPoint,Port **port = nullptr) const;
     bool isMouseOverBlock(const QPointF &pos);
+
 
     //test methods:
     void toggleConnectionPortState(int &indexPort);    //remove this, just for debug
@@ -97,19 +70,14 @@ public:
     void paint(QPainter *painter,
                const QStyleOptionGraphicsItem *option,
                QWidget *widget = nullptr) override;
+    QPainterPath shape() const override;
+
     //User Interaction methods:
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
-
     void hoverMoveEvent(QGraphicsSceneHoverEvent *event) override;
     void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
-
-    //methods to be called from the View object to determine
-    //if a block or port is under mouse position:
-//    static Block*       getBlockUnderMouse(){return blockUnderMouse;}
-//    static Block::Port* getPortUnderMouse() {return portUnderMouse;}
-//    int type() const override{ return TypeID::BlockID; }
 
 private:
     void updateBoundingRect();
@@ -123,9 +91,27 @@ private:
 
     void drawConnector(QPainter *painter,PortDir dir,int connectorIndex);
     void drawPortConnectorShape(QPainter *painter,Port &port);
-    Port& getPort(PortDir dir,int connectorIndex);
-    void computeConnetorGapAndOffset(const int &nPorts,float &gap,float &offset) const;
+    Port& getWeakPtr(PortDir dir,int connectorIndex);
+    void computeConnetorGapAndOffset(const int &nPorts,double &gap,double &offset) const;
     void setBlockEffect(const QColor &color);
+
+    std::weak_ptr<Port> getWeakPtr(const Port *port) const;
+
+private: //ctor required
+    QString _type;
+    QString name;
+    uint32_t uid;
+private://internal vars
+    QRectF blockRect;
+    QRectF dragArea;
+    std::vector<std::shared_ptr<Port>> ports;
+    int nInputs;
+    int nOutputs;
+    QPointF center;
+    BlockOrientation blockOrientation;
+    int portIndexHintToDraw;
+    bool enableDrag = false;
+    bool hover = false;
 };
 
 } // namespace GuiBlocks

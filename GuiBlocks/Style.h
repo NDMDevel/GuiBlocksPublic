@@ -12,8 +12,8 @@ class StyleText
 public:
     StyleText() = delete;
 
-    static float  gapTypeToBorderGridSizePercent;
-    static float  gapTextToBorderGridSizePercent;
+    static double gapTypeToBorderGridSizePercent;
+    static double gapTextToBorderGridSizePercent;
     static QFont  blockTypeFont;
     static QColor blockTypeColor;
     static QFont  blockNameFont;
@@ -35,9 +35,9 @@ public:
     static QLinearGradient customFillGradient;
     static QColor blockRectFillColor1;
     static QColor blockRectFillColor2;
-    static float  roundingXWidthPercent;
-    static float  roundingYWidthPercent;
-    static float  opacity;
+    static double roundingXWidthPercent;
+    static double roundingYWidthPercent;
+    static double opacity;
     static QColor inputConnectorBorderColor;
     static QColor outputConnectorBorderColor;
     static QColor inputConnectorFillColor;
@@ -49,11 +49,11 @@ class StyleGrid
 public:
     StyleGrid() = delete;
 
-    static float  gridSize;
+    static double  gridSize;
     static QColor backgroundGridColor;
-    static float  fineGridWidth;
+    static double  fineGridWidth;
     static QColor fineGridColor;
-    static float  coarseGridWidth;
+    static double  coarseGridWidth;
     static QColor coarseGridColor;
 };
 
@@ -62,13 +62,26 @@ class StyleLink
 public:
     StyleLink() = delete;
 
-    static QPen   normalPen;
     static QColor normalColor;
-//    static QColor selectedColor;
-    static float  width;
+    static double  width;
     static QColor shadowColor;
     static Qt::PenStyle  normalLine;
     static Qt::PenCapStyle normalCap;
+};
+
+class StyleSelection
+{
+public:
+    StyleSelection() = delete;
+
+    static QColor normalFillColor;
+    static QColor cuttedFillColor;
+//    static QColor normalLineColor;
+//    static QColor cuttedLineColor;
+    static double width;
+    static double opacity;
+    static Qt::PenStyle    normalLine;
+    static Qt::BrushStyle  fillStyle;
 };
 
 

@@ -3,7 +3,7 @@
 
 namespace GuiBlocks {
 
-float nextEven(float val)
+double nextEven(double val)
 {
     if( val < 0 )
         return 0;
@@ -19,14 +19,14 @@ float nextEven(float val)
     return 2*int(val);
 }
 
-float max(float val1, float val2)
+double max(double val1, double val2)
 {
     if( val1 > val2 )
         return val1;
     return val2;
 }
 
-QPointF nextGridPosition(QPointF pos, float gridSize)
+QPointF nextGridPosition(QPointF pos, double gridSize)
 {
     pos /= gridSize;
 //    pos.setX(pos.x()/gridSize);
@@ -39,24 +39,34 @@ QPointF nextGridPosition(QPointF pos, float gridSize)
 //
 //}
 
-float nextGridValue(float val, float gridSize)
+double nextGridValue(double val, double gridSize)
 {
-    int count = val/gridSize;
-    float res;
+    int count = int(val/gridSize);
+    double res;
     do
-        res = float(count++)*gridSize;
-    while( res-val<=0.0f );
+        res = double(count++)*gridSize;
+    while( res-val<=0.0 );
     return res;
 }
 
-QPointF nextEvenGridPosition(QPointF pos, float gridSize)
+QPointF nextEvenGridPosition(QPointF pos, double gridSize)
 {
-    return nextGridPosition(pos , 2.0f*gridSize);
+    return nextGridPosition(pos , 2.0*gridSize);
 }
 
-float nextEvenGridValue(float val, float gridSize)
+double nextEvenGridValue(double val, double gridSize)
 {
-    return nextGridValue(val , 2.0f*gridSize);
+    return nextGridValue(val , 2.0*gridSize);
+}
+
+double nextOddGridValue(double val, double gridSize)
+{
+    int count = int(val/gridSize);
+    double res;
+    do
+        res = double(count++)*gridSize;
+    while( res-val<=0.0 || (count-1)%2==0 );
+    return res;
 }
 
 bool isInteger(const double &val)
@@ -67,8 +77,8 @@ bool isInteger(const double &val)
 QPoint  pointConvertion(const QPointF &pointf)
 {
     QPoint point;
-    point.setX(pointf.x());
-    point.setY(pointf.y());
+    point.setX(int(pointf.x()));
+    point.setY(int(pointf.y()));
     return point;
 }
 
@@ -90,21 +100,5 @@ bool equals(double x1, double x2, double maxDiff)
     return std::abs(x1-x2) < maxDiff;
 }
 
-template<typename T>
-std::tuple<T,T> minmax(const std::vector<T>& args)
-{
-    if( args.size() == 0 )
-        throw("minmax empty arg");
-
-    T min = args[0];
-    T max = args[0];
-    if( args.size() != 1 )
-        for( uint32_t idx=1 ; idx<args.size() ; idx++  )
-        {
-            min = std::min(min,args[idx]);
-            max = std::max(max,args[idx]);
-        }
-    return {min,max};
-}
 
 } // namespace GuiBlocks

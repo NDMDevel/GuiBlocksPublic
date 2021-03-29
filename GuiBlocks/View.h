@@ -18,7 +18,9 @@ public:
 
     void addBlock();
     void forcedConnectedLastBlock();
+    void flipLastBlock();
     void setDebugText(const QString &text);
+    void showCurrentLinkData();
 
 protected:
     void drawBackground(QPainter* painter, const QRectF &r) override;
@@ -33,12 +35,10 @@ protected:
 protected slots:
     void paintEvent(QPaintEvent *event) override;
 
-private: //internals methods
-//    void syncLinkPosToBlockPort(const Block *block,
-//                                const Block::Port *port,
-//                                const QPointF& mousePos,
-//                                QPointF &targetPos) const;
+signals:
+    void updateCoords(const QPointF&);
 
+private: //internals methods
     void moveBlockToFront(Block* block) const;
     Block::Port* getBlockPortUnderMouse(QList<QGraphicsItem*> &items,
                                         const QPoint& mousePos) const;
@@ -49,6 +49,7 @@ private: //internal helpers
 private: //internal types
     class UserInterfaceStateMachine
     {
+        friend View;
     public:
         enum class States
         {
@@ -58,17 +59,20 @@ private: //internal types
             updateEndPoint,
             waitRelease,
             moveLine,
-            appendLine
+            appendLine,
+            drawSelectionRect,
         };
     public:
         //UserInterfaceStateMachine(GuiBlocks::View *parent,GuiBlocks::Scene &scene,std::vector<Link*> &links):parent(parent),scene(scene),links(links){}
         UserInterfaceStateMachine(GuiBlocks::View *parent):parent(parent){}
         void mousePress(QMouseEvent *event);
-        void mouseMove(QMouseEvent *event)noexcept;
+        void mouseMove(QMouseEvent *event);
         void mouseRelease(QMouseEvent *event);
         void keyPress(QKeyEvent *event);
 
         void switchLinkPath();
+
+        void showCurrentLinkData()const;
     private: //internal methods
         enum ActiveItemIdx  //to be used with std::optional<...> activeItem
         {
@@ -76,15 +80,22 @@ private: //internal types
             BlockIdx,
             LinkIdx
         };
-        std::optional<std::variant<Block::Port*,Block*,Link*>> getItemUnderMouse(const QPoint &mousePos) const;
+        std::optional<std::variant<Block::Port*,Block*,Link*>> getItemUnderMouse(const QPoint &mousePos,bool gridPosition=true) const;
+        std::vector<Link*> getLinksUnderMouse(const QPoint &mousePos,bool gridPosition=true) const;
         void updateActiveLine(const QPointF &pos);
+        void removeLinkFromScene();
     private:
         GuiBlocks::View *parent;
         std::optional<std::variant<Block::Port*,Block*,Link*>> activeItem;
         States st = States::waitPress;
         Link::LinkPath linkPath = Link::LinkPath::straightThenOrthogonal;
-        QPointF startOrPrevMousePos;
-    };
+        QPointF startPos;
+        QPointF prevPos;
+        QPainterPath selectionShape;
+        QGraphicsPathItem *selectionShapePtr = nullptr;
+        QList<QGraphicsItem*> itemsSelected;
+        Link* lastLink = nullptr;
+    };//class UserInterfaceStateMachine
 
 private:
     Scene scene;
@@ -92,42 +103,12 @@ private:
     std::vector<Link*> links;
     QPointF panViewClicPos;
 
-    class LinkStateMachine
-    {
-    public:
-        enum class States
-        {
-            waittingPress,
-            validatePress,
-            drag,
-            waittingMove,
-            update,
-            waittingRelease
-        };
-    public:
-        void setActiveLink(Link *link);
-        Link* getActiveLink(){ return link; }
-        void mousePress(const QPointF& pos);
-        void mouseMove(const QPointF& pos);
-        void mouseRelease(const QPointF& pos);
-        void cancelDraw();
-        void switchLinkPath();
-
-    private:
-//        void appendLine(const QPointF &pos);
-//        std::optional<QPointF> computeMidPoint(const QPointF &pos);
-
-    private:
-        Link::LinkPath linkPath = Link::LinkPath::verticalThenHorizontal;
-        States st = States::waittingPress;
-        Link *link = nullptr;
-        QPointF prevPos;
-        QPointF firstPos;
-    }linkSM;
-
+private://debug helpers
     struct DebugType
     {
-
+        QPainterPath selection;
+        Block *lastBlock;
+        std::optional<std::variant<Block::Port*,Block*,Link*>> activeItem;
     }debug;
 };
 

@@ -22,7 +22,6 @@ Block::Block(const QString &type,
     : QGraphicsItem(parent),
       _type(type),
       name(name),
-      dir(BlockOrientation::East),
       nInputs(0),
       nOutputs(0),
       center(0.0,0.0),
@@ -42,7 +41,7 @@ Block::Block(const QString &type,
     setBlockEffect(StyleBlockShape::shadowColor);
 
     //block style:
-    setOpacity(qreal(StyleBlockShape::opacity));
+    setOpacity(StyleBlockShape::opacity);
 }
 
 Block::~Block()
@@ -55,10 +54,10 @@ void Block::addPort(Block::PortDir dir,QString type,QString name)
     switch( dir )
     {
     case PortDir::Input:
-        ports.insert(nInputs++,std::make_shared<Port>(Port(this,dir,type,name)));
+        ports.insert(ports.begin()+nInputs++,std::make_shared<Port>(Port(this,dir,type,name)));
         break;
     case PortDir::Output:
-        ports.insert(nInputs+nOutputs++,std::make_shared<Port>(Port(this,dir,type,name)));
+        ports.insert(ports.begin()+nInputs+nOutputs++,std::make_shared<Port>(Port(this,dir,type,name)));
         break;
     }
     updateBoundingRect();
@@ -113,58 +112,23 @@ QPointF Block::getPortConnectionPoint(const Block::Port &port)
 
 Block::Port* Block::isMouseOverPort(const QPointF &pos)
 {
-    for( int i=0 ; i<ports.length() ; i++ )
+    for( size_t i=0 ; i<ports.size() ; i++ )
         if( (*ports[i]).connectorShape.boundingRect().contains(pos) )
             return &(*ports[i]);
     return nullptr;
 }
-//
-//bool Block::isMouseOverPort(const QPointF &pos,QPointF& connectionPoint,Port **port) const
-//{
-//    auto localPos = mapFromScene(pos);
-//    if( port != nullptr )
-//        *port = nullptr;
-//    for( int i=0 ; i<ports.length() ; i++ )
-//        if( (*ports[i]).connectorShape.boundingRect().contains(localPos) )
-//        {
-//            if( port != nullptr )
-//            {
-//                *port = &(*ports[i]);
-//
-//                if( (*port)->dir == Block::PortDir::Input )
-//                {
-//                    if( getBlockOrientation() == Block::BlockOrientation::East )
-//                        connectionPoint.setX((*port)->connectorShape.boundingRect().width());
-//                    else
-//                        connectionPoint.setX(0);
-//                }
-//                else
-//                {
-//                    if( getBlockOrientation() == Block::BlockOrientation::East )
-//                        connectionPoint.setX(0);
-//                    else
-//                        connectionPoint.setX((*port)->connectorShape.boundingRect().width());
-//                }
-//                connectionPoint.setY((*port)->connectorShape.boundingRect().height()/2.0);
-//                connectionPoint = (*port)->connectorShape.boundingRect().topLeft()+mapToScene(connectionPoint.x(),connectionPoint.y());
-//            }
-//            return true;
-//        }
-//    return false;
-//}
-//
+
 bool Block::isMouseOverBlock(const QPointF &pos)
 {
     bool isOver = dragArea.contains(pos);
-//    qDebug() << dragArea << pos << isOver;
     return isOver;
 }
 
 void Block::toggleConnectionPortState(int &indexPort)
 {
-    if( ports.length() == 0 )
+    if( ports.size() == 0 )
         return;
-    if( indexPort >= ports.length() || indexPort < 0 )
+    if( size_t(indexPort) >= ports.size() || indexPort < 0 )
         indexPort = 0;
     (*ports[indexPort]).connected = !(*ports[indexPort]).connected;
     update();
@@ -179,17 +143,41 @@ void Block::paint(QPainter *painter,
     Q_UNUSED(option)
     Q_UNUSED(widget)
 
-//    debug_msg("paint");
-
-    //drawBoundingRect(painter);    //just for debug
     drawBlockShape(painter);
     drawType(painter);
     drawName(painter);
     drawConnectors(painter);
-    //drawShadowPlace(painter);
 
     if( portIndexHintToDraw != -1 )
         drawPortHint(painter,(*ports[portIndexHintToDraw]));
+}
+
+QPainterPath Block::shape() const
+{
+    QPainterPath shape;
+    if( nInputs == 0 && nOutputs == 0 )
+    {
+        shape.addRect(dragArea);
+        return shape;
+    }
+    QRectF area = dragArea;
+    auto width = StyleBlockShape::connectorSizeGridSizePercent.width()*StyleGrid::gridSize;
+    if( blockOrientation == BlockOrientation::West )
+    {
+        if( nInputs != 0 )
+            area.setLeft(area.left()-width);
+        if( nOutputs != 0 )
+            area.setRight(area.right()+width);
+    }
+    else
+    {
+        if( nInputs != 0 )
+            area.setRight(area.right()+width);
+        if( nOutputs != 0 )
+            area.setLeft(area.left()-width);
+    }
+    shape.addRect(area);
+    return shape;
 }
 
 void Block::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
@@ -197,7 +185,7 @@ void Block::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
     if( enableDrag )
     {
         QGraphicsItem::mouseMoveEvent(event);
-//        update();
+
     }
 }
 
@@ -213,28 +201,6 @@ void Block::mousePressEvent(QGraphicsSceneMouseEvent *event)
         else
             event->ignore();
         return;
-
-//        //if the clic pos is not over the drag area nor a port,
-//        //the event is send to the block that is behind this (if any)
-//        if( !isMouseOverBlock(event->pos()) && !isMouseOverPort(event->pos()) )
-//        //if( getBlockUnderMouse() != this /*&& getPortUnderMouse() == nullptr*/ )
-//        {
-//            event->ignore();
-//            return;
-//        }
-//#warning "This lines should be removed because view obj should do this instead of the block."
-//        auto items = collidingItems();
-//        for( auto item : items )
-//        {
-//            if( item->zValue() > 0 )
-//                item->setZValue(0);
-//        }
-//        setZValue(1);
-//        if( dragArea.contains(event->pos()) )
-//            enableDrag = true;
-//        //else
-//        //    debug_msg("click over port");
-//        //event->accept();
     }
 }
 
@@ -247,8 +213,6 @@ void Block::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
         {
             enableDrag = false;
             QPointF p = nextGridPosition(mapToScene(event->pos())-event->pos(),StyleGrid::gridSize);
-//            if( pos() == p )
-//                return;
             setPos(p);
         }
     }
@@ -258,38 +222,29 @@ void Block::hoverMoveEvent(QGraphicsSceneHoverEvent *event)
 {
     QGraphicsItem::hoverMoveEvent(event);
     int currentHintIndex = portIndexHintToDraw;
-    for( int i=0 ; i<ports.length() ; i++ )
+    for( size_t i=0 ; i<ports.size() ; i++ )
+    {
         if( (*ports[i]).connectorShape.boundingRect().contains(event->pos()) )
         {
-            portIndexHintToDraw = i;
-//            portUnderMouse = &(*ports[portIndexHintToDraw]);
-//            blockUnderMouse = portUnderMouse->getParent();
-//            debug_msg(portUnderMouse->name);
+            portIndexHintToDraw = int(i);
             break;
         }
         else
         {
             portIndexHintToDraw = -1;
-//            portUnderMouse = nullptr;
         }
-
+    }
     bool needsUpdate = (currentHintIndex != portIndexHintToDraw);
     if( hover != dragArea.contains(event->pos()) )
     {
-//        debug_msg("hover");
         hover = dragArea.contains(event->pos());
         if( hover )
         {
             setBlockEffect(StyleBlockShape::shadowColorOnHover);
-//            blockUnderMouse = this;
-//            debug_msg(blockUnderMouse->getName());
-//            debug_msg("hover block");
         }
         else
         {
             setBlockEffect(StyleBlockShape::shadowColor);
-//            if( portUnderMouse == nullptr )
-//                blockUnderMouse = nullptr;
         }
         needsUpdate = true;
     }
@@ -321,9 +276,6 @@ void Block::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
     }
     if( needsUpdate )
         update();
-
-//    blockUnderMouse = nullptr;
-//    portUnderMouse  = nullptr;
 }
 
 void Block::updateBoundingRect()
@@ -331,9 +283,9 @@ void Block::updateBoundingRect()
     //compute inner block width (enough space to write the "type" of the block plus some gap)
     //This inner width will always be an even multiple of the gridSize
     QFontMetrics fontMetrics = QFontMetrics(StyleText::blockTypeFont);
-    float innerBlockWidth = 2.0f*StyleText::gapTypeToBorderGridSizePercent*fontMetrics.capHeight()
+    double innerBlockWidth = 2.0*StyleText::gapTypeToBorderGridSizePercent*fontMetrics.capHeight()
                             + fontMetrics.horizontalAdvance(_type);
-    innerBlockWidth  = nextEvenGridValue(innerBlockWidth,StyleGrid::gridSize);
+    innerBlockWidth  = nextOddGridValue(innerBlockWidth,StyleGrid::gridSize);//+StyleGrid::gridSize;
 
     //Compute Max width of the texts:
     //This texts are the block "name" which will be displayed on top of the block.
@@ -342,7 +294,7 @@ void Block::updateBoundingRect()
     //This text width (maxPortTextWidth) or the inner block width (innerBlockWidth),
     //whichever greater, will define the boundingRect width (maxBoundingWidth):
     fontMetrics = QFontMetrics(StyleText::blockNameFont);
-    float maxPortTextWidth = fontMetrics.horizontalAdvance(name);
+    double maxPortTextWidth = fontMetrics.horizontalAdvance(name);
     fontMetrics = QFontMetrics(StyleText::blockHintFont);
     bool hasPortType = false;
     bool hasPortName = false;
@@ -362,27 +314,27 @@ void Block::updateBoundingRect()
 
     maxPortTextWidth = nextEvenGridValue(maxPortTextWidth,StyleGrid::gridSize);
 
-    float maxBoundingWidth = 0;
+    double maxBoundingWidth = 0;
     if( nInputs!=0 || nOutputs!=0 )
-        maxBoundingWidth = max(maxPortTextWidth,innerBlockWidth + 2.0f*StyleBlockShape::connectorSizeGridSizePercent.width()*StyleGrid::gridSize);
+        maxBoundingWidth = max(maxPortTextWidth,innerBlockWidth + 2.0*StyleBlockShape::connectorSizeGridSizePercent.width()*StyleGrid::gridSize);
 
     //compute text header and footer (block "name" and connectors "name" and "type"):
     if( QFontMetrics(StyleText::blockNameFont).capHeight() > fontMetrics.capHeight() )
         fontMetrics = QFontMetrics(StyleText::blockNameFont);
-    float headerFooterTextHeight = 0;
+    double headerFooterTextHeight = 0;
     if( hasPortName || !_type.isEmpty() )
-        headerFooterTextHeight += 2.0f*(fontMetrics.capHeight()*1.75f+0*StyleText::gapTextToBorderGridSizePercent*StyleGrid::gridSize);
+        headerFooterTextHeight += 2.0*(fontMetrics.capHeight()*1.75+0*StyleText::gapTextToBorderGridSizePercent*StyleGrid::gridSize);
     if( hasPortType )
-        headerFooterTextHeight += 2.0f*(fontMetrics.capHeight()*1.75f+0*StyleText::gapTextToBorderGridSizePercent*StyleGrid::gridSize);
+        headerFooterTextHeight += 2.0*(fontMetrics.capHeight()*1.75+0*StyleText::gapTextToBorderGridSizePercent*StyleGrid::gridSize);
 
     //compute Max height due to the IO ports:
-    float maxConHeight = 2*max(nInputs,nOutputs);
-    maxConHeight = max(maxConHeight,2)*StyleGrid::gridSize;
+    double maxConHeight = 2.0*max(nInputs,nOutputs);
+    maxConHeight = max(maxConHeight,2.0)*StyleGrid::gridSize;
 
     //Compute the inner height: it will be defined by the heigth required by the connectors
     //or by "type" displayed inside the block. Whichever greater will define the inner heigth:
     fontMetrics = QFontMetrics(StyleText::blockTypeFont);
-    float innerBlockHeight = max(maxConHeight,nextEvenGridValue(fontMetrics.capHeight()*(1.0f+2.0f*StyleText::gapTypeToBorderGridSizePercent),StyleGrid::gridSize));
+    double innerBlockHeight = max(maxConHeight,nextEvenGridValue(fontMetrics.capHeight()*(1.0+2.0*StyleText::gapTypeToBorderGridSizePercent),StyleGrid::gridSize));
 
     //innerBlockHeight will always be an even multiple of the gridSize,
     //this implies that the size of the dragArea (inner block) has a heigth
@@ -392,18 +344,9 @@ void Block::updateBoundingRect()
     dragArea.setSize(QSizeF(innerBlockWidth,innerBlockHeight));
     dragArea.moveCenter(center);
 
-    float maxBoundingHeigth = nextGridValue(innerBlockHeight+headerFooterTextHeight,StyleGrid::gridSize);
+    double maxBoundingHeigth = nextGridValue(innerBlockHeight+headerFooterTextHeight,StyleGrid::gridSize);
     blockRect.setSize(QSizeF(maxBoundingWidth,maxBoundingHeigth));
     blockRect.moveCenter(center);
-//    {
-//      auto effect = new QGraphicsDropShadowEffect;
-//      effect->boundingRectFor(dragArea);
-//      effect->setOffset(2, 2);
-//      effect->setBlurRadius(10);
-//      effect->setColor(StyleBlockShape::shadowColor);
-//
-//      setGraphicsEffect(effect);
-//    }
 }
 
 void Block::drawBoundingRect(QPainter *painter)
@@ -469,7 +412,7 @@ void Block::drawPortHint(QPainter *painter, const Block::Port &port)
         QString portType = "(" + port.type + ")";
         QRectF boundingRectText = fontMetrics.boundingRect(portType);
         QPointF offsetPos;
-        offsetPos.setY(dragArea.bottom()+2.0f*fontMetrics.capHeight()*1.75+0*2.0*boundingRectText.height());
+        offsetPos.setY(dragArea.bottom()+2.0*fontMetrics.capHeight()*1.75+0*2.0*boundingRectText.height());
         offsetPos.setX(dragArea.center().x()-boundingRectText.center().x());
         painter->drawText(offsetPos,portType);
     }
@@ -494,7 +437,7 @@ void Block::drawBlockShape(QPainter *painter)
     else
         painter->setPen(QPen(StyleBlockShape::blockRectBorderColor,1));
     painter->drawRoundedRect(dragArea,
-                             dragArea.width()*StyleBlockShape::roundingXWidthPercent,
+                             dragArea.width() *StyleBlockShape::roundingXWidthPercent,
                              dragArea.height()*StyleBlockShape::roundingYWidthPercent);
 
     painter->restore();
@@ -507,17 +450,6 @@ void Block::drawConnectors(QPainter *painter)
     for( int i=0 ; i<nOutputs ; i++ )
         drawConnector(painter,PortDir::Output,i);
 }
-
-/*void Block::drawShadowPlace(QPainter *painter)
-{
-//    qDebug() << pos() << scenePos() << mapToItem(this,nextGridPosition(pos(),gridSize));
-    QRectF rect;
-    qDebug() << (nextGridPosition(mapToScene(pos()),gridSize));
-    rect.setSize(dragArea.size());
-    rect.moveCenter(pos()-nextGridPosition(mapToScene(pos()),gridSize));
-    if( enableDrag )
-        painter->drawRect(rect);
-}*/
 
 /**
 @brief Draw a connector on the current block
@@ -533,30 +465,30 @@ void Block::drawConnector(QPainter *painter, Block::PortDir dir, int connectorIn
     {
         if( connectorIndex >= nInputs )
             return;
-        float offset;
-        float gap;
+        double offset;
+        double gap;
         computeConnetorGapAndOffset(nInputs,gap,offset);
-        Port &port = getPort(dir,connectorIndex);
+        Port &port = getWeakPtr(dir,connectorIndex);
         port.connectorShape = QPainterPath();   //resets the QPainterPath
         if( blockOrientation == BlockOrientation::West )
-            port.connectorShape.moveTo(dragArea.left(),dragArea.top()+offset+gap*float(connectorIndex));
+            port.connectorShape.moveTo(dragArea.left(),dragArea.top()+offset+gap*double(connectorIndex));
         if( blockOrientation == BlockOrientation::East )
-            port.connectorShape.moveTo(dragArea.right(),dragArea.top()+offset+gap*float(connectorIndex));
+            port.connectorShape.moveTo(dragArea.right(),dragArea.top()+offset+gap*double(connectorIndex));
         drawPortConnectorShape(painter,port);
     }
     if( dir == PortDir::Output )
     {
         if( connectorIndex >= nOutputs )
             return;
-        float offset;
-        float gap;
+        double offset;
+        double gap;
         computeConnetorGapAndOffset(nOutputs,gap,offset);
-        Port &port = getPort(dir,connectorIndex);
+        Port &port = getWeakPtr(dir,connectorIndex);
         port.connectorShape = QPainterPath();   //resets the QPainterPath
         if( blockOrientation == BlockOrientation::West )
-            port.connectorShape.moveTo(dragArea.right(),dragArea.top()+offset+gap*float(connectorIndex));
+            port.connectorShape.moveTo(dragArea.right(),dragArea.top()+offset+gap*double(connectorIndex));
         if( blockOrientation == BlockOrientation::East )
-            port.connectorShape.moveTo(dragArea.left(),dragArea.top()+offset+gap*float(connectorIndex));
+            port.connectorShape.moveTo(dragArea.left(),dragArea.top()+offset+gap*double(connectorIndex));
         drawPortConnectorShape(painter,port);
     }
 }
@@ -574,13 +506,13 @@ void Block::drawPortConnectorShape(QPainter *painter, Block::Port &port)
         }
 
         port.connectorShape.lineTo(arrowTip.x()-size.width(),
-                                   arrowTip.y()-size.height()/2.0f );
+                                   arrowTip.y()-size.height()/2.0 );
         if( port.connected )
             port.connectorShape.lineTo(arrowTip.x()-size.width(),
-                                       arrowTip.y()+size.height()/2.0f );
+                                       arrowTip.y()+size.height()/2.0 );
         else
             port.connectorShape.moveTo(arrowTip.x()-size.width(),
-                                       arrowTip.y()+size.height()/2.0f );
+                                       arrowTip.y()+size.height()/2.0 );
         port.connectorShape.lineTo(arrowTip);
     }
     if( blockOrientation == BlockOrientation::East )
@@ -592,13 +524,13 @@ void Block::drawPortConnectorShape(QPainter *painter, Block::Port &port)
         }
 
         port.connectorShape.lineTo(arrowTip.x()+size.width(),
-                                   arrowTip.y()+size.height()/2.0f );
+                                   arrowTip.y()+size.height()/2.0 );
         if( port.connected )
             port.connectorShape.lineTo(arrowTip.x()+size.width(),
-                                       arrowTip.y()-size.height()/2.0f );
+                                       arrowTip.y()-size.height()/2.0 );
         else
             port.connectorShape.moveTo(arrowTip.x()+size.width(),
-                                       arrowTip.y()-size.height()/2.0f );
+                                       arrowTip.y()-size.height()/2.0 );
         port.connectorShape.lineTo(arrowTip);
     }
     painter->save();
@@ -623,10 +555,10 @@ void Block::drawPortConnectorShape(QPainter *painter, Block::Port &port)
     painter->restore();
 }
 
-Block::Port &Block::getPort(Block::PortDir dir, int connectorIndex)
+Block::Port &Block::getWeakPtr(Block::PortDir dir, int connectorIndex)
 {
     //handle errors
-    if( connectorIndex >= ports.length() || connectorIndex < 0 )
+    if( size_t(connectorIndex) >= ports.size() || connectorIndex < 0 )
         goto error;
     if( (dir == PortDir::Input) && (connectorIndex>nInputs) )
         goto error;
@@ -641,7 +573,7 @@ Block::Port &Block::getPort(Block::PortDir dir, int connectorIndex)
     throw("getPort(): index out of range: QVector<Port> ports.");
 }
 
-void Block::computeConnetorGapAndOffset(const int &nPorts,float &gap, float &offset) const
+void Block::computeConnetorGapAndOffset(const int &nPorts,double &gap, double &offset) const
 {
     //  *** Algorithm ***
     //
@@ -658,15 +590,15 @@ void Block::computeConnetorGapAndOffset(const int &nPorts,float &gap, float &off
     //      Offset =  ceil( Height / nPorts / 2 )
     //      Gap    = floor( Height / nPorts )
     //  }
-    if( isInteger( dragArea.height()/StyleGrid::gridSize/float(nPorts+1) ) )
+    if( isInteger( dragArea.height()/StyleGrid::gridSize/double(nPorts+1) ) )
     {
-        offset = dragArea.height() / float(nPorts+1);
+        offset = dragArea.height() / double(nPorts+1);
         gap    = offset;
     }
     else
     {
-        offset = std::ceil(  dragArea.height()/StyleGrid::gridSize/float(nPorts) / 2.0f )*StyleGrid::gridSize;
-        gap    = std::floor( dragArea.height()/StyleGrid::gridSize/float(nPorts) )*StyleGrid::gridSize;
+        offset = std::ceil(  dragArea.height()/StyleGrid::gridSize/double(nPorts) / 2.0 )*StyleGrid::gridSize;
+        gap    = std::floor( dragArea.height()/StyleGrid::gridSize/double(nPorts) )*StyleGrid::gridSize;
     }
 }
 
@@ -678,6 +610,14 @@ void Block::setBlockEffect(const QColor &color)
     effect->setBlurRadius(15);
     effect->setColor(color);
     setGraphicsEffect(effect);
+}
+
+std::weak_ptr<Block::Port> Block::getWeakPtr(const Port* port) const
+{
+    for( auto &p : ports )
+        if( p.get() == port )
+            return p;
+    return {};
 }
 
 Block::Port::Port(Block *parent,Block::PortDir dir, QString type, QString name)
