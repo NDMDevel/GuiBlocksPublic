@@ -13,6 +13,8 @@
 
 namespace GuiBlocks {
 
+//forward declaration of Link to avoid #include "Link.h" that will rise compile errors
+class Link;
 class Block : public QGraphicsItem
 {
 public: //exported types
@@ -28,13 +30,19 @@ public: //exported types
         QString type;
         QString name;
         uint32_t uid;
-        bool    connected = false;
-        bool    multipleConnections = false;
         std::weak_ptr<Port> getCopy() const { return parent->getWeakPtr(this); }
         QPainterPath connectorShape;
+        struct
+        {
+            uint16_t nodeIdx;
+            Link *link = nullptr;
+        } connectionLink;
         Port(){}
         Port(Block *parent,PortDir dir,QString type,QString name="");
         Block* getParent() const { return parent; }
+        void connectPortToLink(Link *link,uint16_t nodeIdx);
+        void disconnectPortFromLink();
+        bool isConnected(){ return connectionLink.link != nullptr; }
     };
     enum class BlockOrientation
     {
@@ -63,7 +71,7 @@ public: //general methods
 
 
     //test methods:
-    void toggleConnectionPortState(int &indexPort);    //remove this, just for debug
+    //void toggleConnectionPortState(int &indexPort);    //remove this, just for debug
 
     //Interface (pure virtual) methods:
     QRectF boundingRect() const override{ return blockRect; }

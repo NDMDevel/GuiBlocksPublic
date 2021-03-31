@@ -6,7 +6,7 @@
 #include <QGraphicsItem>
 #include <QGraphicsSceneMouseEvent>
 #include <QPen>
-#include "Block.h"
+#include "GuiBlocks/Block.h"
 
 namespace GuiBlocks {
 
@@ -22,10 +22,13 @@ private: //internal types
         struct Node
         {
             Node() noexcept;
+            Node(Node && n);
             Node(const QPointF &point,
                  uint16_t prevNode=invalid_index,
                  uint16_t firstChildIdx=invalid_index,
                  uint16_t parentNextChildIdx=invalid_index) noexcept;
+            ~Node();
+            //Node& operator=(const Node &n);
             bool isEmpty() const noexcept;
             void makeEmpty() noexcept;
             void resetIndexs() noexcept;
@@ -38,6 +41,11 @@ private: //internal types
             uint16_t firstChildIdx;
             uint16_t parentNextChildIdx;
             uint16_t prevNode;
+            struct
+            {
+                bool connected    = false;
+                Block::Port *port = nullptr;
+            } connectionPort;
         };//struct Node
 
         //ctors
@@ -151,8 +159,7 @@ public: //exported types
 
 public: //ctors & dtor
     Link(const QPointF &startPos);
-    Link(const Link& l);
-    //virtual ~Link() override {}
+//    Link(const Link& l);
 
 public: //pure virtual methods
     QRectF boundingRect() const override { return containerRect; }
@@ -170,7 +177,11 @@ public: //general methods
     void selectArea(const QPainterPath &shape) noexcept;
     void selectAreaFirstItem(const QPainterPath &shape) noexcept;
     void selectAreaNearestItem(const QPointF &pos) noexcept;
+    void clearSelectedArea() noexcept;
+    bool isSelectedAreaMovable() const noexcept;
+    bool isConnectedAtPoint(const QPointF& point) const noexcept;
     void displaceSelectedArea(const QPointF &offset) noexcept;
+    void moveSelectedNode(uint16_t nodeIdx,const QPointF &to);
     void simplifySelectedArea() noexcept;
     bool isPosOnlyEndPoint(const QPointF &pos) noexcept;
     auto length()const noexcept{ return tree.length(); }
@@ -181,6 +192,12 @@ public: //general methods
 
     //port management
     void appendPort(const Block::Port *port);
+    //this two methods modifies this link
+    void connectLinkToPortAtLastInsertedLine(Block::Port *port,
+                                             bool connectAtStart);
+    void connectLinkToPort(const QPointF &pos,Block::Port *port);
+    void connectLinkToPort(uint16_t idx,Block::Port *port);
+    void disconnectLinkFromPort(uint16_t idx);
 
 
 private: //internal methods
@@ -189,7 +206,6 @@ private: //internal methods
                                            const LinkPath &linkPath) const noexcept;
     void updateContainerRect();
     bool simplifyRootNode() noexcept;
-    std::optional<std::tuple<QPointF,double>> getTaxiDistanceAndPoint(const QPointF &pos);
     //this method will return the indexs of the two points of the line grabbed or
     //the index of the point grabbed (in the first element of the tuple, the second will be invalid_index)
     std::tuple<uint16_t,uint16_t> getGrabbedIndexs(const QPointF &pos) const noexcept;
@@ -207,6 +223,7 @@ private: //internal vars
     std::vector<std::weak_ptr<Block::Port>> pasivePorts;
     //to store the only active port that can be connected to a link
     std::weak_ptr<Block::Port> activePort;
+
     QRectF containerRect;
 
 private: //internals for debug porpouses

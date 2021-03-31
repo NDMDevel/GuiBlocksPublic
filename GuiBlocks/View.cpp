@@ -33,6 +33,11 @@ View::View(QWidget *parent)
     brush.setStyle(Qt::BrushStyle::SolidPattern);
     setBackgroundBrush(brush);
 
+    //call setItemIndexMethod with NoIndex is necessary to void crashes
+    //when deleting (manually) the links removed from the scene.
+    //It seems that the scene keeps reference to the links
+    //after removing it in the BSPItemIndexMethod
+    scene.setItemIndexMethod(QGraphicsScene::ItemIndexMethod::NoIndex);
     QGraphicsView::setScene(&scene);
 }
 
@@ -217,22 +222,7 @@ void View::mouseDoubleClickEvent(QMouseEvent *event)
     Q_UNUSED(event)
     if( event->buttons() == Qt::LeftButton )
     {
-//        qDebug() << link[0]->boundingRect();
-//        auto rect = new QGraphicsRectItem(link[0]->boundingRect());
-//        scene.addItem(rect);
-//        QGraphicsPathItem *pathItem = new QGraphicsPathItem();
-//        pathItem->setFlag(QGraphicsItem::ItemIsMovable);
-//        QPainterPath path;
-//        path.moveTo(0,0);
-//        path.lineTo(25,50);
-//        path.lineTo(0,100);
-//        pathItem->setPath(path);
-//        scene.addItem(pathItem);
-//        if( path.elementAt(2).isLineTo() )
-//        {
-//            path.setElementPositionAt(2,-50,-80);
-//            pathItem->setPath(path);
-//        }
+        uiSM.mouseDoubleClick(event);
     }
 }
 
@@ -240,13 +230,6 @@ void View::keyPressEvent(QKeyEvent *event)
 {
     QGraphicsView::keyPressEvent(event);
     uiSM.keyPress(event);
-//    if( event->key() == Qt::Key::Key_S )
-//        if( links.size() > 0 )
-//        {
-//            qDebug() << "+ + + + + + + + + +";
-//            links[links.size()-1]->show();
-//            qDebug() << "+ + + + + + + + + +";
-//        }
 }
 
 void View::mouseReleaseEvent(QMouseEvent *event)
@@ -280,10 +263,10 @@ void View::wheelEvent(QWheelEvent *event)
 //    scene.addRect(sceneRect());
 }
 
-void View::paintEvent(QPaintEvent *event)
-{
-    QGraphicsView::paintEvent(event);
-}
+//void View::paintEvent(QPaintEvent *event)
+//{
+//    QGraphicsView::paintEvent(event);
+//}
 
 void View::moveBlockToFront(Block *block) const
 {
@@ -415,6 +398,7 @@ void View::UserInterfaceStateMachine::mouseMove(QMouseEvent *event)
                 //start a new line not connected
                 activeItem = new Link(prevPos);
                 auto &link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+                qDebug() << "1" << link;
                 link->insertLineAt(prevPos,pos,linkPath);
                 parent->links.push_back(link);
                 parent->scene.addItem(link);
@@ -435,14 +419,17 @@ void View::UserInterfaceStateMachine::mouseMove(QMouseEvent *event)
                     case ActiveItemIdx::PortIdx:
                         {
                             auto port = std::get<ActiveItemIdx::PortIdx>(activeItem.value());
-                            port->connected = true;
                             auto link = new Link(prevPos);
-                            link->appendPort(port);
+                            qDebug() << "2" << link;
+//                            port->connected = true;
+//                            link->appendPort(port);
                             activeItem = link;
                             lastLink = link;
                             link->insertLineAt(prevPos,pos,linkPath);
                             parent->links.push_back(link);
                             parent->scene.addItem(link);
+                            link->connectLinkToPortAtLastInsertedLine(port,true);
+                            port->parent->update();
                         }
                         break;
                     default:
@@ -497,7 +484,7 @@ void View::UserInterfaceStateMachine::mouseMove(QMouseEvent *event)
         }
         //a link, a block or a port is under mouse:
         auto &item_ptr = activeItem.value();
-        switch( item_ptr.index() )  //not completed
+        switch( item_ptr.index() )
         {
             case ActiveItemIdx::PortIdx:  //Port*  -> nothing
             case ActiveItemIdx::BlockIdx: //Block* -> nothing
@@ -511,6 +498,13 @@ void View::UserInterfaceStateMachine::mouseMove(QMouseEvent *event)
                     auto link = std::get<ActiveItemIdx::LinkIdx>(item_ptr);
                     lastLink = link;
                     link->selectAreaNearestItem(parent->mapToScene(event->pos()));
+                    if( link->isSelectedAreaMovable() == false )
+                    {
+                        link->clearSelectedArea();
+                        activeItem.reset();
+                        st = States::waitRelease;
+                        return;
+                    }
                     //link->getGrabbedIndexs(parent->mapToScene(event->pos()));
                     QPainterPath shape;
                     QRectF rect;
@@ -559,8 +553,26 @@ void View::UserInterfaceStateMachine::mouseRelease(QMouseEvent *event)
             switch( static_cast<ActiveItemIdx>(activeItem.value().index()) )
             {
                 case ActiveItemIdx::PortIdx:
+                    {
+                        auto port = std::get<ActiveItemIdx::PortIdx>(activeItem.value());
+                        if( port->isConnected() )
+                        {
+                            activeItem.reset();
+                            st = States::waitPress;
+                            return;
+                        }
+                    }
                     break;
                 case ActiveItemIdx::LinkIdx:
+                    {
+                        auto link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+                        if( link->isConnectedAtPoint(startPos) )
+                        {
+                            activeItem.reset();
+                            st = States::waitPress;
+                            return;
+                        }
+                    }
                     break;
                 case ActiveItemIdx::BlockIdx:
                     parent->debug.activeItem = activeItem;
@@ -598,24 +610,52 @@ void View::UserInterfaceStateMachine::mouseRelease(QMouseEvent *event)
     }
 }
 
+void View::UserInterfaceStateMachine::mouseDoubleClick(QMouseEvent *event)
+{
+    if( event->button() == Qt::LeftButton )
+    {
+        if( activeItem )
+        {
+            //cancel action (link drawing, selection area or block move)
+            if( static_cast<ActiveItemIdx>(activeItem.value().index()) == ActiveItemIdx::LinkIdx )
+            {
+                auto link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+                if( st == States::moveLine )
+                    link->displaceSelectedArea(startPos-prevPos);
+                if( st == States::updateEndPoint )
+                {
+                    link->removeLastInsertedLine();
+                    if( link->isEmpty() )
+                        removeLinkFromScene();
+                }
+                activeItem.reset();
+                st = States::waitPress;
+            }
+        }
+    }
+}
+
 void View::UserInterfaceStateMachine::keyPress(QKeyEvent *event)
 {
     if( event->key() == Qt::Key::Key_Escape )
     {
-        //cancel action (link drawing, selection area or block move)
-        if( static_cast<ActiveItemIdx>(activeItem.value().index()) == ActiveItemIdx::LinkIdx )
+        if( activeItem )
         {
-            auto link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
-            if( st == States::moveLine )
-                link->displaceSelectedArea(startPos-prevPos);
-            if( st == States::updateEndPoint )
+            //cancel action (link drawing, selection area or block move)
+            if( static_cast<ActiveItemIdx>(activeItem.value().index()) == ActiveItemIdx::LinkIdx )
             {
-                link->removeLastInsertedLine();
-                if( link->isEmpty() )
-                    removeLinkFromScene();
+                auto link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
+                if( st == States::moveLine )
+                    link->displaceSelectedArea(startPos-prevPos);
+                if( st == States::updateEndPoint )
+                {
+                    link->removeLastInsertedLine();
+                    if( link->isEmpty() )
+                        removeLinkFromScene();
+                }
+                activeItem.reset();
+                st = States::waitPress;
             }
-            activeItem.reset();
-            st = States::waitPress;
         }
     }
 }
@@ -697,9 +737,9 @@ View::UserInterfaceStateMachine::getItemUnderMouse(const QPoint &mousePos,
 
 std::vector<Link*> View::UserInterfaceStateMachine::getLinksUnderMouse(const QPoint &mousePos,bool gridPosition) const
 {
-    qDebug() << parent->mapToScene(mousePos);
+//    qDebug() << parent->mapToScene(mousePos);
     auto items = parent->scene.items(parent->mapToScene(mousePos));
-    qDebug() << "items.size()" << items.size();
+//    qDebug() << "items.size()" << items.size();
     std::vector<Link*> links;
     for( auto& item : items )
         if( auto link = dynamic_cast<Link*>(item) )
@@ -733,7 +773,6 @@ void View::UserInterfaceStateMachine::updateActiveLine(const QPointF &pos)
         return;
     }
     auto &link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
-//    link->updateLastLine(pos,linkPath);
     link->updateLastInsertedLine(pos,linkPath);
 }
 
@@ -749,7 +788,7 @@ void View::UserInterfaceStateMachine::removeLinkFromScene()
             {
                 auto link = std::get<ActiveItemIdx::LinkIdx>(activeItem.value());
                 parent->scene.removeItem(link);
-                for( auto idx=parent->links.size() ; idx>0 ; idx--)
+                for( size_t idx=0 ; idx<parent->links.size() ; idx++)
                     if( parent->links[idx] == link )
                     {
                         parent->links.erase(parent->links.begin()+idx);

@@ -7,13 +7,23 @@
 
 namespace GuiBlocks {
 
-
 //--------------------------------------
 //------ Link::LinkBinTree::Node  ------
 Link::LinkBinTree::Node::Node() noexcept
 {
     makeEmpty();
     resetIndexs();
+}
+
+Link::LinkBinTree::Node::Node(Link::LinkBinTree::Node &&n)
+{
+    this->connectionPort = n.connectionPort;
+    this->firstChildIdx = n.firstChildIdx;
+    this->parentNextChildIdx = n.parentNextChildIdx;
+    this->point = n.point;
+    this->prevNode = n.prevNode;
+    //this will avoid disconnection from block port if n is destructed
+    n.connectionPort.port = nullptr;
 }
 
 Link::LinkBinTree::Node::Node(const QPointF &point,
@@ -23,6 +33,17 @@ Link::LinkBinTree::Node::Node(const QPointF &point,
 {
     setData(point,parentIdx,firstChildIdx,parentNextChildIdx);
 }
+
+Link::LinkBinTree::Node::~Node()
+{
+    makeEmpty();
+}
+
+//Link::LinkBinTree::Node &Link::LinkBinTree::Node::operator=(const Link::LinkBinTree::Node &n)
+//{
+//    this->prevNode =
+//    return *this;
+//}
 
 bool Link::LinkBinTree::Node::isEmpty() const noexcept
 {
@@ -34,6 +55,12 @@ bool Link::LinkBinTree::Node::isEmpty() const noexcept
 
 void Link::LinkBinTree::Node::makeEmpty() noexcept
 {
+    if( connectionPort.port != nullptr )
+    {
+        connectionPort.port->disconnectPortFromLink();
+        //connectionPort.port = nullptr;
+        //connectionPort.connected = false;
+    }
     point.setX(qQNaN());
 //    firstChildIdx = invalid_index;
 //    parentNextChildIdx = invalid_index;
@@ -440,7 +467,10 @@ void Link::LinkBinTree::showNodes() const noexcept
             QString parent = "X";
             if( nodes[idx].prevNode != invalid_index )
                 parent = QString::number(nodes[idx].prevNode);
-            qDebug() << idx << ": " << nodes[idx].point << parent << left << right;
+            QString port = "";
+            if( nodes[idx].connectionPort.port != nullptr )
+                port = nodes[idx].connectionPort.port->name;
+            qDebug() << idx << ": " << nodes[idx].point << parent << left << right << port;
         }
     }
 }
@@ -674,8 +704,6 @@ Link::LinkBinTree::isMiddleOfLine(uint16_t targetIdx) const noexcept
     return {};
 }
 
-
-
 bool Link::LinkBinTree::isBetweenTwoNodes(uint16_t targetIdx) const noexcept
 {
     if( nodes[targetIdx].prevNode      == invalid_index ||
@@ -740,14 +768,14 @@ Link::Link(const QPointF &startPos)
     setGraphicsEffect(effect);
 }
 
-Link::Link(const Link &l)
-    : QGraphicsItem(nullptr),
-//      points(l.points),
-      tree(l.tree)
-{
-    activePort  = l.activePort;
-    pasivePorts = l.pasivePorts;
-}
+//Link::Link(const Link &l)
+//    : QGraphicsItem(nullptr),
+////      points(l.points),
+//      tree(l.tree)
+//{
+////    activePort  = l.activePort;
+//    //    pasivePorts = l.pasivePorts;
+//}
 
 void Link::paint(QPainter *painter,
                  const QStyleOptionGraphicsItem *option,
@@ -774,6 +802,8 @@ void Link::paint(QPainter *painter,
         painter->drawEllipse(tree[to],2,2);
 
         //[DEBUG] draw node index:
+        #define LINK_DEBUG
+        #ifdef LINK_DEBUG
         painter->save();
         if( from == tree.rootIdx )
             painter->setPen(QPen(QBrush(Qt::magenta),
@@ -798,44 +828,16 @@ void Link::paint(QPainter *painter,
                                  StyleLink::normalCap));
         painter->drawText(tree[to]  ,QString::number(to)  +"["+QString::number(tree.childrenCount(to))  +"]"+"("+QString::number(tree[to].x())  +","+QString::number(tree[to]  .y())+")");
         painter->restore();
+        #endif
     }
-
-//    auto[idx1,idx2] = points.getIteratorIndex();
-//    auto[p1,p2] = points.iterateData();
-//    while( p1 != nullptr && p2 != nullptr )
-//    {
-//        //draw line:
-//        painter->drawLine(p1->point,p2->point);
-//        //draw node:
-//        if( p2->connCount > 1 )
-//            painter->drawEllipse(p2->point,2,2);
-//
-//        //[DEBUG] draw node index:
-//       painter->save();
-//       painter->setPen(QPen(QBrush(Qt::red),
-//                            qreal(StyleLink::width),
-//                            StyleLink::normalLine,
-//                            StyleLink::normalCap));
-//       painter->drawText(p1->point,QString::number(idx1)+"["+QString::number(points.getChildCount(idx1))+"]"+"("+QString::number(p1->point.x())+","+QString::number(p1->point.y())+")");
-//       painter->drawText(p2->point,QString::number(idx2)+"["+QString::number(points.getChildCount(idx2))+"]"+"("+QString::number(p2->point.x())+","+QString::number(p2->point.y())+")");
-//       painter->restore();
-//
-//        //prepare next iteration
-//        std::tie(p1,p2) = points.iterateData();
-//        std::tie(idx1,idx2) = points.getIteratorIndex();
-//    }
+    #ifdef LINK_DEBUG
     painter->setPen(QPen(QBrush(Qt::blue),
                          1,
                          Qt::DashLine,
                          StyleLink::normalCap));
     painter->drawRect(boundingRect());
+    #endif
 }
-
-//bool Link::containsPoint(const QPointF &point)
-//{
-//#warning "the nextGridPosition was not called before"
-//    return points.isOnTrajectory(nextGridPosition(mapToScene(point),StyleGrid::gridSize)).has_value();
-//}
 
 std::optional<QPointF> Link::computeMidPoint(const QPointF &startPoint,
                                              const QPointF &endPoint,
@@ -953,50 +955,6 @@ bool Link::simplifyRootNode() noexcept
         return true;
     }
     return false;
-}
-
-std::optional<std::tuple<QPointF,double>> Link::getTaxiDistanceAndPoint(const QPointF &pos)
-{
-    if( tree.length() == 0 )
-        return {};  //empty return
-    std::tuple<QPointF,double> retval;
-    std::get<1>(retval) = qInf();
-
-    LinkBinTree::IterPointers iterPointers;
-    tree.resetIterator(&iterPointers);
-    while( auto idx = tree.iterate(&iterPointers) )
-    {
-        auto[pa,pb] = idx.value();
-        QLineF line(pa,pb);
-        QPointF p1( pos.x()+line.dy() , pos.y()-line.dx() );
-        QPointF p2( pos.x()-line.dy() , pos.y()+line.dx() );
-        QLineF pline(p1,p2);
-        if( line.intersects(pline,&p1) == QLineF::BoundedIntersection )
-        {
-            auto dist = squareDistance(pos,p1);
-            if( std::get<1>(retval) > dist )
-            {
-                std::get<0>(retval) = p1;
-                std::get<1>(retval) = dist;
-            }
-        }
-        if( line.intersects(pline,&p1) == QLineF::UnboundedIntersection )
-        {
-            auto dist = squareDistance(pos,line.p1());
-            auto p = line.p1();
-            if( dist > squareDistance(pos,line.p2()) )
-            {
-                dist = squareDistance(pos,line.p2());
-                p = line.p2();
-            }
-            if( std::get<1>(retval) > dist )
-            {
-                std::get<0>(retval) = p;
-                std::get<1>(retval) = dist;
-            }
-        }
-    }
-    return {retval};
 }
 
 std::tuple<uint16_t,uint16_t> Link::getGrabbedIndexs(const QPointF &pos) const noexcept
@@ -1330,10 +1288,41 @@ void Link::selectAreaNearestItem(const QPointF &pos) noexcept
         selectedIdx.push_back(idx2);
 }
 
+void Link::clearSelectedArea() noexcept
+{
+    selectedIdx.clear();
+}
+
+bool Link::isSelectedAreaMovable() const noexcept
+{
+    if( selectedIdx.size() == 0 )
+        return false;
+    for( const auto idx : selectedIdx )
+        if( tree.nodes[idx].connectionPort.connected )
+            return false;
+    return true;
+}
+
+bool Link::isConnectedAtPoint(const QPointF &point) const noexcept
+{
+    for( auto &node : tree.nodes )
+        if( node.point == point )
+            return node.connectionPort.connected;
+    return false;
+}
+
 void Link::displaceSelectedArea(const QPointF &offset) noexcept
 {
     for( auto idx : selectedIdx )
         tree[idx] += offset;
+    updateContainerRect();
+    prepareGeometryChange();
+    update();
+}
+
+void Link::moveSelectedNode(uint16_t nodeIdx,const QPointF &to)
+{
+    tree[nodeIdx] = to;
     updateContainerRect();
     prepareGeometryChange();
     update();
@@ -1418,6 +1407,72 @@ void Link::appendPort(const Block::Port *port)
     else
         activePort = port->getCopy();
     port->parent->update();
+}
+
+void Link::connectLinkToPortAtLastInsertedLine(Block::Port *port,
+                                               bool connectAtStart)
+{
+    if( idxStart == LinkBinTree::invalid_index )
+        throw "port connection can not be done (connection point does not exist)";
+    auto idx = idxStart;
+    if( !connectAtStart )
+        idx = idxEnd;
+    if( tree.nodes[idx].isEmpty() )
+        throw "port connection can not be done (connection point is empty/invalid)";
+    tree.nodes[idx].connectionPort.port = port;
+    tree.nodes[idx].connectionPort.connected = true;
+    port->connectionLink.link = this;
+    port->connectionLink.nodeIdx = idx;
+    //port->connected = true;
+}
+
+void Link::connectLinkToPort(const QPointF &pos, Block::Port *port)
+{
+    if( port == nullptr )
+        throw "connectLinkToPort can not connect to a null port";
+
+    tree.resetChildIter(tree.rootIdx);
+    while( auto idx = tree.childIter() )
+        if( tree.nodes[idx].point == pos )
+        {
+            tree.nodes[idx].connectionPort.connected = true;
+            tree.nodes[idx].connectionPort.port = port;
+            //port->connected = true;
+            port->connectionLink.link = this;
+            port->connectionLink.nodeIdx = idx;
+            return;
+        }
+}
+
+void Link::connectLinkToPort(uint16_t idx, Block::Port *port)
+{
+    if( idx == LinkBinTree::invalid_index || port == nullptr )
+        throw "connectLinkToPort can not connect to an invalid node or null port";
+
+    if( tree.nodes[idx].isEmpty() )
+        throw "connectLinkToPort can not connect to an empty node";
+
+    tree.nodes[idx].connectionPort.connected = true;
+    tree.nodes[idx].connectionPort.port = port;
+    //port->connected = true;
+    port->connectionLink.link = this;
+    port->connectionLink.nodeIdx = idx;
+}
+
+void Link::disconnectLinkFromPort(uint16_t idx)
+{
+    if( idx == LinkBinTree::invalid_index )
+        throw "disconnectLinkFromPort invalid index";
+
+    if( tree.nodes[idx].isEmpty() )
+        throw "disconnectLinkFromPort invalid node";
+
+    auto &port = tree.nodes[idx].connectionPort.port;
+    port->connectionLink.link = nullptr;
+    port->connectionLink.nodeIdx = LinkBinTree::invalid_index;
+    //port->connected = false;
+    tree.nodes[idx].connectionPort.connected = false;
+    tree.nodes[idx].connectionPort.port = nullptr;
 }
 
 } // namespace GuiBlock

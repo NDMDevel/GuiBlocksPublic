@@ -33,7 +33,7 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
 
 protected slots:
-    void paintEvent(QPaintEvent *event) override;
+    //void paintEvent(QPaintEvent *event) override;
 
 signals:
     void updateCoords(const QPointF&);
@@ -68,6 +68,7 @@ private: //internal types
         void mousePress(QMouseEvent *event);
         void mouseMove(QMouseEvent *event);
         void mouseRelease(QMouseEvent *event);
+        void mouseDoubleClick(QMouseEvent *event);
         void keyPress(QKeyEvent *event);
 
         void switchLinkPath();
@@ -88,7 +89,7 @@ private: //internal types
         GuiBlocks::View *parent;
         std::optional<std::variant<Block::Port*,Block*,Link*>> activeItem;
         States st = States::waitPress;
-        Link::LinkPath linkPath = Link::LinkPath::straightThenOrthogonal;
+        Link::LinkPath linkPath = Link::LinkPath::orthogonalThenStraight;
         QPointF startPos;
         QPointF prevPos;
         QPainterPath selectionShape;
@@ -99,6 +100,7 @@ private: //internal types
 
 private:
     Scene scene;
+//    QGraphicsScene scene;
     UserInterfaceStateMachine uiSM;
     std::vector<Link*> links;
     QPointF panViewClicPos;

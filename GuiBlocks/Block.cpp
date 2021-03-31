@@ -1,4 +1,5 @@
 #include "Block.h"
+#include "Link.h"
 #include <QPainter>
 #include "Utils.h"
 #include <cmath>
@@ -66,6 +67,19 @@ void Block::addPort(Block::PortDir dir,QString type,QString name)
 void Block::setBlockOrientation(const Block::BlockOrientation &orientation)
 {
     blockOrientation = orientation;
+    for( const auto &port : ports )
+        if( port->isConnected() )
+        {
+            auto connPoint = mapToScene(center)+port->connectorShape.currentPosition();
+            if( port->dir == PortDir::Input )
+            {
+                if( blockOrientation == BlockOrientation::West )
+                    connPoint -= QPointF(StyleGrid::gridSize/2.0,0.0);
+                else
+                    connPoint += QPointF(StyleGrid::gridSize/2.0,0.0);
+            }
+            port->connectionLink.link->moveSelectedNode(port->connectionLink.nodeIdx,connPoint);
+        }
     update();
 }
 
@@ -124,15 +138,15 @@ bool Block::isMouseOverBlock(const QPointF &pos)
     return isOver;
 }
 
-void Block::toggleConnectionPortState(int &indexPort)
-{
-    if( ports.size() == 0 )
-        return;
-    if( size_t(indexPort) >= ports.size() || indexPort < 0 )
-        indexPort = 0;
-    (*ports[indexPort]).connected = !(*ports[indexPort]).connected;
-    update();
-}
+//void Block::toggleConnectionPortState(int &indexPort)
+//{
+//    if( ports.size() == 0 )
+//        return;
+//    if( size_t(indexPort) >= ports.size() || indexPort < 0 )
+//        indexPort = 0;
+//    (*ports[indexPort]).connected = !(*ports[indexPort]).connected;
+//    update();
+//}
 
 void Block::paint(QPainter *painter,
                   const QStyleOptionGraphicsItem *option,
@@ -185,7 +199,19 @@ void Block::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
     if( enableDrag )
     {
         QGraphicsItem::mouseMoveEvent(event);
-
+        for( const auto &port : ports )
+            if( port->isConnected() )
+            {
+                auto connPoint = mapToScene(center)+port->connectorShape.currentPosition();
+                if( port->dir == PortDir::Input )
+                {
+                    if( port->parent->getBlockOrientation() == BlockOrientation::West )
+                        connPoint -= QPointF(StyleGrid::gridSize/2.0,0.0);
+                    else
+                        connPoint += QPointF(StyleGrid::gridSize/2.0,0.0);
+                }
+                port->connectionLink.link->moveSelectedNode(port->connectionLink.nodeIdx,connPoint);
+            }
     }
 }
 
@@ -214,6 +240,20 @@ void Block::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
             enableDrag = false;
             QPointF p = nextGridPosition(mapToScene(event->pos())-event->pos(),StyleGrid::gridSize);
             setPos(p);
+            for( const auto &port : ports )
+                if( port->isConnected() )
+                {
+                    auto connPoint = p+port->connectorShape.currentPosition();
+                    if( port->dir == PortDir::Input )
+                    {
+                        if( port->parent->getBlockOrientation() == BlockOrientation::West )
+                            connPoint -= QPointF(StyleGrid::gridSize/2.0,0.0);
+                        else
+                            connPoint += QPointF(StyleGrid::gridSize/2.0,0.0);
+                    }
+                    port->connectionLink.link->moveSelectedNode(port->connectionLink.nodeIdx,connPoint);
+                }
+
         }
     }
 }
@@ -507,7 +547,7 @@ void Block::drawPortConnectorShape(QPainter *painter, Block::Port &port)
 
         port.connectorShape.lineTo(arrowTip.x()-size.width(),
                                    arrowTip.y()-size.height()/2.0 );
-        if( port.connected )
+        if( port.isConnected() )
             port.connectorShape.lineTo(arrowTip.x()-size.width(),
                                        arrowTip.y()+size.height()/2.0 );
         else
@@ -525,7 +565,7 @@ void Block::drawPortConnectorShape(QPainter *painter, Block::Port &port)
 
         port.connectorShape.lineTo(arrowTip.x()+size.width(),
                                    arrowTip.y()+size.height()/2.0 );
-        if( port.connected )
+        if( port.isConnected() )
             port.connectorShape.lineTo(arrowTip.x()+size.width(),
                                        arrowTip.y()-size.height()/2.0 );
         else
@@ -539,17 +579,17 @@ void Block::drawPortConnectorShape(QPainter *painter, Block::Port &port)
     if( port.dir == PortDir::Input )
     {
         borderColor = StyleBlockShape::inputConnectorBorderColor;
-        if( port.connected )
+        if( port.isConnected() )
             fillColor = StyleBlockShape::inputConnectorFillColor;
     }
     else
     {
         borderColor = StyleBlockShape::outputConnectorBorderColor;
-        if( port.connected )
+        if( port.isConnected() )
             fillColor = StyleBlockShape::outputConnectorFillColor;
     }
     painter->setPen(borderColor);
-    if( port.connected )
+    if( port.isConnected() )
         painter->fillPath(port.connectorShape,fillColor);
     painter->drawPath(port.connectorShape);
     painter->restore();
@@ -626,15 +666,30 @@ Block::Port::Port(Block *parent,Block::PortDir dir, QString type, QString name)
       type(type),
       name(name)
 {
-    connected = false;
-    if( dir == Block::PortDir::Input )
-    {
-        multipleConnections = false;
-    }
-    else
-    {
-        multipleConnections = true;
-    }
+//    connected = false;
+//    if( dir == Block::PortDir::Input )
+//    {
+//        multipleConnections = false;
+//    }
+//    else
+//    {
+//        multipleConnections = true;
+//    }
+}
+
+void Block::Port::connectPortToLink(Link *link, uint16_t nodeIdx)
+{
+    if( link != nullptr )
+        link->connectLinkToPort(nodeIdx,this);
+//    else
+//        connectionLink.link = nullptr;
+}
+
+void Block::Port::disconnectPortFromLink()
+{
+    qDebug() << "disconnectPortFromLink()";
+    if( connectionLink.link != nullptr )
+        connectionLink.link->disconnectLinkFromPort(connectionLink.nodeIdx);
 }
 
 
